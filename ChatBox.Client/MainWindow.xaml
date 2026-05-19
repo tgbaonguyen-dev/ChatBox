@@ -9,6 +9,8 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <cv:Base64ImageConverter x:Key="Base64Converter"/>
+        <cv:AvatarInitialsVisibilityConverter x:Key="AvatarInitialsVisConverter"/>
+        <cv:FirstLetterConverter x:Key="FirstLetterConverter"/>
 
         <!-- Premium Custom Scrollbar Thumb Template -->
         <Style x:Key="ScrollThumbs" TargetType="{x:Type Thumb}">
@@ -786,11 +788,20 @@
                             </Grid.ColumnDefinitions>
                             
                             <!-- Avatar on the left -->
-                            <Ellipse x:Name="imgMsgAvatar" Grid.Column="0" Width="40" Height="40" VerticalAlignment="Top" HorizontalAlignment="Center">
-                                <Ellipse.Fill>
-                                    <ImageBrush ImageSource="{Binding AvatarBase64, Converter={StaticResource Base64Converter}}" Stretch="UniformToFill"/>
-                                </Ellipse.Fill>
-                            </Ellipse>
+                            <Grid Grid.Column="0" Width="40" Height="40" VerticalAlignment="Top" HorizontalAlignment="Center">
+                                <Ellipse x:Name="imgMsgAvatar" Width="40" Height="40" VerticalAlignment="Top" HorizontalAlignment="Center">
+                                    <Ellipse.Fill>
+                                        <ImageBrush ImageSource="{Binding AvatarBase64, Converter={StaticResource Base64Converter}}" Stretch="UniformToFill"/>
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <Ellipse Width="40" Height="40" VerticalAlignment="Top" HorizontalAlignment="Center"
+                                         Fill="#5865F2"
+                                         Visibility="{Binding AvatarBase64, Converter={StaticResource AvatarInitialsVisConverter}}"/>
+                                <TextBlock Text="{Binding Sender, Converter={StaticResource FirstLetterConverter}}"
+                                           FontSize="16" FontWeight="Bold" Foreground="White"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Visibility="{Binding AvatarBase64, Converter={StaticResource AvatarInitialsVisConverter}}"/>
+                            </Grid>
                             
                             <!-- Message Content Pane on the right -->
                             <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Top">
