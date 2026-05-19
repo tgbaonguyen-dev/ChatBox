@@ -14,6 +14,7 @@ namespace ChatBox.Client
 {
     public class ChatMessage : System.ComponentModel.INotifyPropertyChanged
     {
+        public string MessageId { get; set; } = Guid.NewGuid().ToString();
         public string Sender { get; set; } = "";
         public string Content { get; set; } = "";
         public bool IsFile { get; set; }
@@ -396,8 +397,9 @@ namespace ChatBox.Client
                     string avatar = parts.Length > 3 ? parts[3] : "";
                     string time = parts.Length > 4 ? FormatTimestamp(parts[4]) : FormatTimestamp(DateTime.UtcNow.ToString("O"));
                     bool isMe = (sender == txtUsername.Text || sender == "Me");
-                    var chatMsg = new ChatMessage 
-                    { 
+                    var chatMsg = new ChatMessage
+                    {
+                        MessageId = Guid.NewGuid().ToString(),
                         Sender = sender, 
                         Content = content, 
                         IsFile = false, 
@@ -425,8 +427,9 @@ namespace ChatBox.Client
                     string time = parts.Length > 6 ? FormatTimestamp(parts[6]) : FormatTimestamp(DateTime.UtcNow.ToString("O"));
                     bool isMe = (sender == txtUsername.Text || sender == "Me");
 
-                    var fileMsg = new ChatMessage 
-                    { 
+                    var fileMsg = new ChatMessage
+                    {
+                        MessageId = Guid.NewGuid().ToString(),
                         Sender = sender, 
                         Content = fileName, 
                         IsFile = true, 
@@ -494,6 +497,39 @@ namespace ChatBox.Client
                                 users[i] += " (You)";
                         }
                         lstOnlineUsers.ItemsSource = users;
+                    }
+                }
+                else if (type == "REACTION_UPDATE")
+                {
+                    // REACTION_UPDATE|MessageId|ReactionsJson
+                    if (parts.Length >= 3)
+                    {
+                        string messageId = parts[1];
+                        string reactionsJson = parts[2];
+
+                        var targetMsg = _allMessages.FirstOrDefault(m => m.MessageId == messageId);
+                        if (targetMsg != null)
+                        {
+                            try
+                            {
+                                var reactionsList = JsonSerializer.Deserialize<System.Collections.Generic.List<Reaction>>(reactionsJson);
+                                if (reactionsList != null)
+                                {
+                                    targetMsg.Reactions = reactionsList;
+                                    targetMsg.RefreshReactions();
+
+                                    // Refresh UI if message is in current channel
+                                    if (IsMessageInCurrentChannel(targetMsg))
+                                    {
+                                        RefreshMessageList();
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // Invalid JSON, ignore
+                            }
+                        }
                     }
                 }
             });
@@ -1317,6 +1353,7 @@ namespace ChatBox.Client
 
                 var msg = new ChatMessage
                 {
+                    MessageId = Guid.NewGuid().ToString(),
                     Sender = _displayName,
                     Content = fileInfo.Name,
                     IsFile = true,
@@ -1401,7 +1438,7 @@ namespace ChatBox.Client
             this.Close();
         }
 
-        private void ReactionButton_Click(object sender, RoutedEventArgs e)
+        private async void ReactionButton_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button btn && btn.Tag is string emoji)
             {
@@ -1424,6 +1461,16 @@ namespace ChatBox.Client
                         msg.Reactions.Add(new Reaction { Emoji = emoji, Count = 1, UserNames = _displayName });
                     }
                     msg.RefreshReactions();
+
+                    // Send REACT message to server
+                    try
+                    {
+                        await _chatClient.SendMessageAsync($"REACT|{_userId}|{msg.MessageId}|{emoji}");
+                    }
+                    catch
+                    {
+                        // Silently fail - local state already updated
+                    }
                 }
             }
         }
