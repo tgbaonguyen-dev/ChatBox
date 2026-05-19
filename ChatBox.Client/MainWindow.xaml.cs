@@ -89,6 +89,22 @@ namespace ChatBox.Client
         private System.Collections.Generic.List<ChatMessage> _allMessages = new System.Collections.Generic.List<ChatMessage>();
         private string _currentChannel = "chat";
 
+        public class PendingImage
+        {
+            public string LocalFilePath { get; set; } = "";
+            public string FileName { get; set; } = "";
+            public long FileSize { get; set; }
+        }
+
+        private System.Collections.ObjectModel.ObservableCollection<PendingImage> PendingImages { get; } = new();
+
+        private void UpdatePendingImagesPanel()
+        {
+            itemsPendingImages.ItemsSource = PendingImages.ToList();
+            lblPendingCount.Text = $"{PendingImages.Count} image{(PendingImages.Count == 1 ? "" : "s")} pending";
+            PendingImagesPanel.Visibility = PendingImages.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         public MainWindow()
         {
             InitializeComponent();
@@ -1360,6 +1376,15 @@ namespace ChatBox.Client
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
             this.Close();
+        }
+
+        private void BtnRemovePending_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is PendingImage pending)
+            {
+                PendingImages.Remove(pending);
+                UpdatePendingImagesPanel();
+            }
         }
 
         private void ToggleMaximize()

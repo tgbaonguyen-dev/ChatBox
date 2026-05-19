@@ -693,6 +693,7 @@
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
  
             <!-- Chat Header -->
@@ -1066,8 +1067,49 @@
                 </ItemsControl>
             </ScrollViewer>
 
+            <!-- Pending Images Panel -->
+            <Border x:Name="PendingImagesPanel" Background="#F2F3F5"
+                    Height="Auto" MinHeight="0" MaxHeight="120"
+                    Visibility="Collapsed" BorderBrush="#5865F2" BorderThickness="0,1,0,0">
+                <Grid Margin="8,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="lblPendingCount" Grid.Column="0" Text="0 images pending"
+                               FontSize="11" Foreground="#747F8D" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <ItemsControl x:Name="itemsPendingImages" Grid.Column="1">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,8,0" Width="64" Height="64">
+                                    <Image Source="{Binding LocalFilePath}" Stretch="UniformToFill"
+                                           Width="64" Height="64" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                    <Border Background="#00FFFFFF" BorderBrush="#5865F2" BorderThickness="2"
+                                            CornerRadius="4" Opacity="0.5"/>
+                                    <Button Content="x" FontSize="14" FontWeight="Bold"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top"
+                                            Margin="0,-6,-6,0" Width="20" Height="20"
+                                            Background="#E74C3C" Foreground="White"
+                                            Cursor="Hand" Tag="{Binding}"
+                                            Click="BtnRemovePending_Click">
+                                        <Button.Resources>
+                                            <Style TargetType="Border"><Setter Property="CornerRadius" Value="10"/></Style>
+                                        </Button.Resources>
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Grid>
+            </Border>
+
             <!-- Input Area (Discord style inner box) -->
-            <Grid Grid.Row="3" Margin="20,10,20,24">
+            <Grid Grid.Row="4" Margin="20,10,20,24">
                 <Border x:Name="borderInputArea" Background="#F2F3F5" CornerRadius="8" Padding="12,6">
                     <Grid>
                         <Grid.ColumnDefinitions>
