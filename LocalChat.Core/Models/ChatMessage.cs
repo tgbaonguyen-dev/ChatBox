@@ -24,5 +24,7 @@ namespace LocalChat.Core.Models
         public string? FileId { get; set; }
 
         public long FileSize { get; set; }
+
+        public ICollection<MessageReaction> Reactions { get; set; } = new List<MessageReaction>();
     }
 }
