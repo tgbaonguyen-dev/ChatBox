@@ -72,6 +72,13 @@ namespace ChatBox.Client
             set { _isInImageChannel = value; OnPropertyChanged(nameof(IsInImageChannel)); }
         }
 
+        private bool _isDraft;
+        public bool IsDraft
+        {
+            get => _isDraft;
+            set { _isDraft = value; OnPropertyChanged(nameof(IsDraft)); }
+        }
+
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged(string propertyName) => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
     }
@@ -83,26 +90,21 @@ namespace ChatBox.Client
         private string _serverIp = "";
         private string _userId = "";
         private string _avatarBase64 = "";
+        private string _displayName = "";
         private CancellationTokenSource _cts = new CancellationTokenSource();
         private ChatMessage? _currentTransferMessage;
-        
+        private System.Collections.Generic.List<ChatMessage> _pendingImages = new System.Collections.Generic.List<ChatMessage>();
+
         private System.Collections.Generic.List<ChatMessage> _allMessages = new System.Collections.Generic.List<ChatMessage>();
         private string _currentChannel = "chat";
 
-        public class PendingImage
-        {
-            public string LocalFilePath { get; set; } = "";
-            public string FileName { get; set; } = "";
-            public long FileSize { get; set; }
-        }
-
-        private System.Collections.ObjectModel.ObservableCollection<PendingImage> PendingImages { get; } = new();
-
         private void UpdatePendingImagesPanel()
         {
-            itemsPendingImages.ItemsSource = PendingImages.ToList();
-            lblPendingCount.Text = $"{PendingImages.Count} image{(PendingImages.Count == 1 ? "" : "s")} pending";
-            PendingImagesPanel.Visibility = PendingImages.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            int count = _pendingImages.Count;
+            lblPendingCount.Text = $"{count} image{(count != 1 ? "s" : "")} pending";
+            PendingImagesPanel.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            itemsPendingImages.ItemsSource = null;
+            itemsPendingImages.ItemsSource = _pendingImages;
         }
 
         public MainWindow()
@@ -166,6 +168,7 @@ namespace ChatBox.Client
                         // Set footer details & initials fallback
                         string name = string.IsNullOrWhiteSpace(txtUsername.Text) ? "User" : txtUsername.Text.Trim();
                         lblFooterUsername.Text = name;
+                        _displayName = name;
                         char initial = name.Length > 0 ? char.ToUpper(name[0]) : 'U';
                         lblAvatarInitials.Text = initial.ToString();
                         lblFooterInitials.Text = initial.ToString();
@@ -799,11 +802,12 @@ namespace ChatBox.Client
 
         private void TxtUsername_TextChanged(object sender, TextChangedEventArgs e)
         {
+            _displayName = string.IsNullOrWhiteSpace(txtUsername.Text) ? "User" : txtUsername.Text.Trim();
             if (lblFooterUsername != null)
             {
-                string name = string.IsNullOrWhiteSpace(txtUsername.Text) ? "User" : txtUsername.Text.Trim();
+                string name = _displayName;
                 lblFooterUsername.Text = name;
-                
+
                 char initial = name.Length > 0 ? char.ToUpper(name[0]) : 'U';
                 if (lblAvatarInitials != null) lblAvatarInitials.Text = initial.ToString();
                 if (lblFooterInitials != null) lblFooterInitials.Text = initial.ToString();
@@ -1260,6 +1264,7 @@ namespace ChatBox.Client
                     return;
                 }
                 e.Handled = true;
+                SendPendingImages();
                 BtnSendChat_Click(this, new RoutedEventArgs());
             }
             else if (e.Key == System.Windows.Input.Key.V && isControl)
@@ -1272,25 +1277,29 @@ namespace ChatBox.Client
             }
         }
 
-        private async void HandleImagePaste()
+        private void HandleImagePaste()
         {
             try
             {
+                if (_pendingImages.Count >= 10)
+                {
+                    MessageBox.Show("Maximum 10 images pending. Send or remove some first.", "Limit Reached", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
                 var image = Clipboard.GetImage();
                 if (image == null) return;
 
-                string tempDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TempPaste");
-                if (!System.IO.Directory.Exists(tempDir))
-                {
-                    System.IO.Directory.CreateDirectory(tempDir);
-                }
+                string tempDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TempPaste");
+                if (!Directory.Exists(tempDir))
+                    Directory.CreateDirectory(tempDir);
 
                 string fileName = $"ClipboardImage_{DateTime.Now:yyyyMMdd_HHmmss}.png";
-                string filePath = System.IO.Path.Combine(tempDir, fileName);
+                string filePath = Path.Combine(tempDir, fileName);
 
                 using (var fileStream = new FileStream(filePath, FileMode.Create))
                 {
-                    BitmapEncoder encoder = new PngBitmapEncoder();
+                    var encoder = new PngBitmapEncoder();
                     encoder.Frames.Add(BitmapFrame.Create(image));
                     encoder.Save(fileStream);
                 }
@@ -1298,54 +1307,59 @@ namespace ChatBox.Client
                 Guid fileId = Guid.NewGuid();
                 var fileInfo = new FileInfo(filePath);
 
-                var msg = new ChatMessage 
-                { 
-                    Sender = "Me", 
-                    Content = fileInfo.Name, 
-                    IsFile = true, 
-                    FileId = fileId.ToString(), 
+                var msg = new ChatMessage
+                {
+                    Sender = _displayName,
+                    Content = fileInfo.Name,
+                    IsFile = true,
+                    FileId = fileId.ToString(),
                     FileSize = fileInfo.Length,
                     AvatarBase64 = _avatarBase64,
-                    IsTransferring = true,
-                    TransferProgress = 0,
+                    IsTransferring = false,
                     IsMe = true,
                     Timestamp = FormatTimestamp(DateTime.UtcNow.ToString("O")),
                     LocalFilePath = filePath,
-                    IsInImageChannel = true
+                    IsInImageChannel = true,
+                    IsDraft = true
                 };
-                
-                _allMessages.Add(msg);
-                if (_currentChannel == "images")
-                {
-                    RefreshImageGallery();
-                }
-                else
-                {
-                    RefreshMessageList();
-                }
 
-                _currentTransferMessage = msg;
-
-                await _fileClient.UploadFileAsync(_serverIp, filePath, fileId);
-
-                msg.IsTransferring = false;
-                _currentTransferMessage = null;
-
-                await _chatClient.SendMessageAsync($"FILE_READY|{_userId}|{fileId}|{fileInfo.Name}|{fileInfo.Length}");
-                
-                if (_currentChannel == "images")
-                {
-                    RefreshImageGallery();
-                }
-                else
-                {
-                    RefreshMessageList();
-                }
+                _pendingImages.Add(msg);
+                UpdatePendingImagesPanel();
             }
             catch (Exception ex)
             {
                 MessageBox.Show("Failed to paste image: " + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        private async void SendPendingImages()
+        {
+            if (_pendingImages.Count == 0) return;
+
+            var toSend = _pendingImages.ToList();
+            _pendingImages.Clear();
+            UpdatePendingImagesPanel();
+
+            foreach (var msg in toSend)
+            {
+                msg.IsDraft = false;
+                msg.IsTransferring = true;
+                _allMessages.Add(msg);
+                RefreshMessageList();
+
+                try
+                {
+                    await _fileClient.UploadFileAsync(_serverIp, msg.LocalFilePath, Guid.Parse(msg.FileId));
+                    msg.IsTransferring = false;
+                    await _chatClient.SendMessageAsync($"FILE_READY|{_userId}|{msg.FileId}|{msg.Content}|{msg.FileSize}");
+                }
+                catch
+                {
+                    msg.IsTransferring = false;
+                }
+            }
+
+            RefreshMessageList();
         }
 
         private void Topbar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -1380,9 +1394,9 @@ namespace ChatBox.Client
 
         private void BtnRemovePending_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is Button btn && btn.Tag is PendingImage pending)
+            if (sender is Button btn && btn.Tag is ChatMessage msg)
             {
-                PendingImages.Remove(pending);
+                _pendingImages.Remove(msg);
                 UpdatePendingImagesPanel();
             }
         }
