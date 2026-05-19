@@ -11,7 +11,6 @@
 | 1 | Avatar fallback missing | Empty circle when no avatar uploaded | Show first letter of display name as initials |
 | 2 | Image paste sends immediately | Ctrl+V uploads and sends right away | Stage up to 10 images inline as "drafts" until Enter is pressed |
 | 3 | Sender name hardcoded as "Me" | Messages from self show "Me" | Show user's actual display name from profile |
-| 4 | My messages not on left | My messages appear same row as others | My messages should align left, others align right |
 
 ---
 
@@ -116,52 +115,7 @@
 
 ---
 
-## 5. Message Alignment (My Messages Left, Others Right)
-
-### Current State
-- All messages in same `ListBox` template, same alignment
-- Messages not differentiated by IsMe for horizontal positioning
-- "My messages" look the same as others (just colored name)
-
-### Desired
-- My messages (`IsMe = true`) → align to **LEFT** of chat area
-- Others' messages (`IsMe = false`) → align to **RIGHT** of chat area
-- Avatar position also flips: my avatar on left, other's avatar on right
-- This matches standard messenger convention
-
-### Implementation - Message Wrapper Grid
-- Use a wrapper `Grid` for each message item with two columns:
-  - Col 0: "Start" alignment zone (my messages fill here, others empty)
-  - Col 1: "End" alignment zone (others' messages fill here, my messages empty)
-- For my messages (`IsMe = true`):
-  - Content `HorizontalAlignment = Left`
-  - Avatar on left (existing position)
-  - `Grid.Column = 0`
-- For others (`IsMe = false`):
-  - Content `HorizontalAlignment = Right`
-  - Avatar on right (move to right side of Grid)
-  - `Grid.Column = 1`
-
-### XAML DataTrigger Approach
-```xml
-<DataTrigger Binding="{Binding IsMe}" Value="True">
-    <Setter TargetName="MsgGrid" Property="HorizontalAlignment" Value="Left"/>
-</DataTrigger>
-<DataTrigger Binding="{Binding IsMe}" Value="False">
-    <Setter TargetName="MsgGrid" Property="HorizontalAlignment" Value="Right"/>
-</DataTrigger>
-```
-
-### Visual Change
-| Element | Current | New (My Msg) | New (Other Msg) |
-|---------|---------|--------------|------------------|
-| Horizontal Align | Left (all) | Left | Right |
-| Avatar Position | Left | Left | Right |
-| Content Align | Left | Left | Right |
-
----
-
-## 6. File Changes
+## 5. File Changes
 
 ### Files to Modify
 | File | Changes |
@@ -175,12 +129,11 @@
 | File | Purpose |
 |------|---------|
 | `ChatBox.Client/Converters/AvatarInitialsVisibilityConverter.cs` | Show initials when no avatar |
-| `ChatBox.Client/Converters/MessageAlignmentConverter.cs` | Align my messages left, others right |
-| `ChatBox.Client/Converters/DraftOpacityConverter.cs` | Dim draft images |
+| `ChatBox.Client/Converters/FirstLetterConverter.cs` | Extract first letter from name for initials |
 
 ---
 
-## 7. Dependencies
+## 6. Dependencies
 - No database changes
 - No network protocol changes (image staging is client-side only)
 - Backward compatible with existing messages
