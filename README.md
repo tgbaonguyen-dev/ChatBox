@@ -26,6 +26,13 @@ A premium, highly responsive Local Area Network (LAN) chat application built wit
 - PostgreSQL Database integration via Entity Framework Core.
 - The server automatically executes schema migrations and creates the required database (`ChatBoxDb`) upon startup.
 
+### Asynchronous & Parallel Programming
+- **Non-blocking UI:** Extensive use of `async` and `await` ensures the WPF UI thread never freezes during long-running network or database operations.
+- **Concurrent Server Handling:** The server utilizes `Task.Run` and independent task contexts to handle multiple TCP client connections concurrently, allowing dozens of users to chat simultaneously without bottlenecking.
+- **Background File Processing:** File transfers (uploading, downloading, and image caching) are executed in parallel on separate background threads (`FileTransferService`). Files are transmitted in chunks to prevent memory spikes.
+- **Cooperative Cancellation:** Implementing `CancellationTokenSource` allows users to safely abort connection attempts instantly without raising unhandled exception crashes.
+- **Async Data Access:** Entity Framework Core operations (`AddAsync`, `SaveChangesAsync`, `ToListAsync`) are strictly asynchronous to maximize the server's throughput capacity.
+
 ## Architecture
 
 The solution is divided into three core projects:
