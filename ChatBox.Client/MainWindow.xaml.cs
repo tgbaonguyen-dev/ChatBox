@@ -644,7 +644,7 @@ namespace ChatBox.Client
             string text = cleanText;
             txtInput.Text = "";
 
-            var newMsg = new ChatMessage { Sender = "Me", Content = text, AvatarBase64 = _avatarBase64, IsMe = true, Timestamp = FormatTimestamp(DateTime.UtcNow.ToString("O")) };
+            var newMsg = new ChatMessage { Sender = string.IsNullOrWhiteSpace(_displayName) ? "User" : _displayName, Content = text, AvatarBase64 = _avatarBase64, IsMe = true, Timestamp = FormatTimestamp(DateTime.UtcNow.ToString("O")) };
             _allMessages.Add(newMsg);
             RefreshMessageList();
 
@@ -668,9 +668,9 @@ namespace ChatBox.Client
 
             try
             {
-                var msg = new ChatMessage 
-                { 
-                    Sender = "Me", 
+                var msg = new ChatMessage
+                {
+                    Sender = string.IsNullOrWhiteSpace(_displayName) ? "User" : _displayName, 
                     Content = fileInfo.Name, 
                     IsFile = true, 
                     FileId = fileId.ToString(), 
