@@ -1,6 +1,7 @@
 using LocalChat.Core.Services;
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,16 +21,16 @@ namespace ChatBox.Client
         public long FileSize { get; set; }
         public string AvatarBase64 { get; set; } = "";
         public string DisplayText => IsFile ? $"Attachment: {Content} ({(double)FileSize / (1024 * 1024):F2} MB)" : Content;
-        
+
         public bool IsMe { get; set; }
         public string Timestamp { get; set; } = "";
         public DateTime RawDate { get; set; } = DateTime.UtcNow;
 
         private double _transferProgress;
-        public double TransferProgress 
-        { 
-            get => _transferProgress; 
-            set { _transferProgress = value; OnPropertyChanged(nameof(TransferProgress)); } 
+        public double TransferProgress
+        {
+            get => _transferProgress;
+            set { _transferProgress = value; OnPropertyChanged(nameof(TransferProgress)); }
         }
 
         private bool _isTransferring;
@@ -43,12 +44,12 @@ namespace ChatBox.Client
         public string? LocalFilePath
         {
             get => _localFilePath;
-            set 
-            { 
-                _localFilePath = value; 
-                OnPropertyChanged(nameof(LocalFilePath)); 
-                OnPropertyChanged(nameof(ShowImageControl)); 
-                OnPropertyChanged(nameof(ShowFileControl)); 
+            set
+            {
+                _localFilePath = value;
+                OnPropertyChanged(nameof(LocalFilePath));
+                OnPropertyChanged(nameof(ShowImageControl));
+                OnPropertyChanged(nameof(ShowFileControl));
             }
         }
 
@@ -79,8 +80,24 @@ namespace ChatBox.Client
             set { _isDraft = value; OnPropertyChanged(nameof(IsDraft)); }
         }
 
+        private System.Collections.Generic.List<Reaction> _reactions = new System.Collections.Generic.List<Reaction>();
+        public System.Collections.Generic.List<Reaction> Reactions
+        {
+            get => _reactions;
+            set { _reactions = value; OnPropertyChanged(nameof(Reactions)); }
+        }
+
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged(string propertyName) => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
+
+        public void RefreshReactions() => OnPropertyChanged(nameof(Reactions));
+    }
+
+    public class Reaction
+    {
+        public string Emoji { get; set; } = "";
+        public int Count { get; set; }
+        public string UserNames { get; set; } = "";
     }
 
     public partial class MainWindow : Window
@@ -1382,6 +1399,33 @@ namespace ChatBox.Client
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
             this.Close();
+        }
+
+        private void ReactionButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string emoji)
+            {
+                // Get the clicked message from the context menu placement
+                if (sender is FrameworkElement fe && fe.Parent is System.Windows.Controls.ContextMenu cm && cm.PlacementTarget is ListBoxItem item && item.DataContext is ChatMessage msg)
+                {
+                    // Toggle reaction - add or remove
+                    var existingReaction = msg.Reactions.FirstOrDefault(r => r.Emoji == emoji);
+                    if (existingReaction != null)
+                    {
+                        existingReaction.Count--;
+                        existingReaction.UserNames = existingReaction.UserNames.Replace(_displayName, "").Trim();
+                        if (existingReaction.Count <= 0)
+                        {
+                            msg.Reactions.Remove(existingReaction);
+                        }
+                    }
+                    else
+                    {
+                        msg.Reactions.Add(new Reaction { Emoji = emoji, Count = 1, UserNames = _displayName });
+                    }
+                    msg.RefreshReactions();
+                }
+            }
         }
 
         private void BtnRemovePending_Click(object sender, RoutedEventArgs e)

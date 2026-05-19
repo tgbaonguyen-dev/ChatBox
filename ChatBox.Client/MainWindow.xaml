@@ -61,6 +61,37 @@
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Setter Property="Padding" Value="20,6,20,6"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="ContextMenu">
+                <Setter.Value>
+                    <ContextMenu>
+                        <ContextMenu.Template>
+                            <ControlTemplate TargetType="ContextMenu">
+                                <Border Background="#FFFFFF" BorderBrush="#E3E5E8" BorderThickness="1" CornerRadius="4" Padding="4">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="👍" FontSize="18" Tag="👍" Click="ReactionButton_Click" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4" ToolTip="Like"/>
+                                        <Button Content="👎" FontSize="18" Tag="👎" Click="ReactionButton_Click" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4" ToolTip="Dislike"/>
+                                        <Button Content="😂" FontSize="18" Tag="😂" Click="ReactionButton_Click" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4" ToolTip="Laugh"/>
+                                        <Button Content="❤️" FontSize="18" Tag="❤️" Click="ReactionButton_Click" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4" ToolTip="Love">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Foreground" Value="#9FA0A4"/>
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Foreground" Value="#ED4245"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        <Button Content="😮" FontSize="18" Tag="😮" Click="ReactionButton_Click" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4" ToolTip="Wow"/>
+                                        <Button Content="😢" FontSize="18" Tag="😢" Click="ReactionButton_Click" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4" ToolTip="Sad"/>
+                                    </StackPanel>
+                                </Border>
+                            </ControlTemplate>
+                        </ContextMenu.Template>
+                    </ContextMenu>
+                </Setter.Value>
+            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
@@ -864,6 +895,25 @@
                                 </Border>
 
                                 <emoji:TextBlock x:Name="txtMsgContent" Text="{Binding DisplayText}" FontSize="15" Foreground="#2E3338" TextWrapping="Wrap"/>
+
+                                <!-- Reactions Display Panel -->
+                                <ItemsControl x:Name="ReactionsPanel" ItemsSource="{Binding Reactions}" Margin="0,4,0,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#F2F3F5" CornerRadius="10" BorderBrush="#E3E5E8" BorderThickness="1" Padding="6,2" Margin="0,0,4,0" Cursor="Hand" ToolTip="{Binding UserNames}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Emoji}" FontSize="12" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding Count}" FontSize="11" Foreground="#4F5660" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </StackPanel>
                         </Grid>
                         <DataTemplate.Triggers>
