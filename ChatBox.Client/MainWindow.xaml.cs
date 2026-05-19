@@ -98,15 +98,6 @@ namespace ChatBox.Client
         private System.Collections.Generic.List<ChatMessage> _allMessages = new System.Collections.Generic.List<ChatMessage>();
         private string _currentChannel = "chat";
 
-        private void UpdatePendingImagesPanel()
-        {
-            int count = _pendingImages.Count;
-            lblPendingCount.Text = $"{count} image{(count != 1 ? "s" : "")} pending";
-            PendingImagesPanel.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            itemsPendingImages.ItemsSource = null;
-            itemsPendingImages.ItemsSource = _pendingImages;
-        }
-
         public MainWindow()
         {
             InitializeComponent();
@@ -1323,8 +1314,10 @@ namespace ChatBox.Client
                     IsDraft = true
                 };
 
+                // Add directly to messages list (inline draft)
                 _pendingImages.Add(msg);
-                UpdatePendingImagesPanel();
+                _allMessages.Add(msg);
+                RefreshMessageList();
             }
             catch (Exception ex)
             {
@@ -1338,13 +1331,12 @@ namespace ChatBox.Client
 
             var toSend = _pendingImages.ToList();
             _pendingImages.Clear();
-            UpdatePendingImagesPanel();
+            // UpdatePendingImagesPanel no longer needed - panel removed
 
             foreach (var msg in toSend)
             {
                 msg.IsDraft = false;
                 msg.IsTransferring = true;
-                _allMessages.Add(msg);
                 RefreshMessageList();
 
                 try
@@ -1397,7 +1389,8 @@ namespace ChatBox.Client
             if (sender is Button btn && btn.Tag is ChatMessage msg)
             {
                 _pendingImages.Remove(msg);
-                UpdatePendingImagesPanel();
+                _allMessages.Remove(msg);
+                RefreshMessageList();
             }
         }
 
