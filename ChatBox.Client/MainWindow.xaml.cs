@@ -1529,41 +1529,47 @@ namespace ChatBox.Client
         {
             if (sender is Button btn && btn.Tag is string emoji)
             {
-                // Get the message from button's DataContext (bound to ChatMessage)
-                if (btn.DataContext is ChatMessage msg)
+                // QuickReactionBar is inside the ListBoxItem ControlTemplate,
+                // so btn.DataContext is NOT the ChatMessage. Walk up to find ListBoxItem.
+                ChatMessage? msg = null;
+                DependencyObject? current = btn;
+                while (current != null)
                 {
-                    // Toggle reaction - add or remove
-                    var existingReaction = msg.Reactions.FirstOrDefault(r => r.Emoji == emoji);
-                    if (existingReaction != null)
+                    current = VisualTreeHelper.GetParent(current);
+                    if (current is ListBoxItem lbi && lbi.DataContext is ChatMessage m)
                     {
-                        existingReaction.Count--;
-                        existingReaction.UserNames = existingReaction.UserNames.Replace(_displayName, "").Trim();
-                        if (existingReaction.Count <= 0)
-                        {
-                            msg.Reactions.Remove(existingReaction);
-                        }
+                        msg = m;
+                        break;
                     }
-                    else
-                    {
-                        msg.Reactions.Add(new Reaction { Emoji = emoji, Count = 1, UserNames = _displayName });
-                    }
-                    msg.RefreshReactions();
+                }
 
-                    // Close popup after click
-                    if (btn.Parent is System.Windows.Controls.Panel panel && panel.Parent is Popup popup)
-                    {
-                        popup.IsOpen = false;
-                    }
+                if (msg == null) return;
 
-                    // Send REACT message to server
-                    try
+                // Toggle reaction - add or remove
+                var existingReaction = msg.Reactions.FirstOrDefault(r => r.Emoji == emoji);
+                if (existingReaction != null)
+                {
+                    existingReaction.Count--;
+                    existingReaction.UserNames = existingReaction.UserNames.Replace(_displayName, "").Trim();
+                    if (existingReaction.Count <= 0)
                     {
-                        await _chatClient.SendMessageAsync($"REACT|{_userId}|{msg.MessageId}|{emoji}");
+                        msg.Reactions.Remove(existingReaction);
                     }
-                    catch
-                    {
-                        // Silently fail - local state already updated
-                    }
+                }
+                else
+                {
+                    msg.Reactions.Add(new Reaction { Emoji = emoji, Count = 1, UserNames = _displayName });
+                }
+                msg.RefreshReactions();
+
+                // Send REACT message to server
+                try
+                {
+                    await _chatClient.SendMessageAsync($"REACT|{_userId}|{msg.MessageId}|{emoji}");
+                }
+                catch
+                {
+                    // Silently fail - local state already updated
                 }
             }
         }
