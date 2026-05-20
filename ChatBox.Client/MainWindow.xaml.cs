@@ -118,7 +118,8 @@ namespace ChatBox.Client
         private ChatMessage? _currentTransferMessage;
         private ObservableCollection<ChatMessage> _pendingImages = new ObservableCollection<ChatMessage>();
 
-        private System.Collections.Generic.List<ChatMessage> _allMessages = new System.Collections.Generic.List<ChatMessage>();
+        private ObservableCollection<ChatMessage> _allMessages = new ObservableCollection<ChatMessage>();
+        private System.Collections.ObjectModel.ObservableCollection<ChatMessage> _chatViewMessages = new ObservableCollection<ChatMessage>();
         private string _currentChannel = "chat";
 
         public MainWindow()
@@ -130,6 +131,9 @@ namespace ChatBox.Client
             // Bind staging panel to pending images list
             DraftStagingItems.ItemsSource = _pendingImages;
             UpdateDraftPanelVisibility();
+
+            // Bind chat list once — ObservableCollection handles incremental UI updates
+            lstChatMessages.ItemsSource = _chatViewMessages;
 
             _chatClient.OnMessageReceived += HandleIncomingMessage;
             _fileClient.OnUploadProgress += UpdateProgress;
@@ -291,7 +295,8 @@ namespace ChatBox.Client
 
             try
             {
-                lstChatMessages.Items.Clear();
+                _allMessages.Clear();
+                _chatViewMessages.Clear();
                 if (_cts.IsCancellationRequested) _cts = new CancellationTokenSource();
                 await _chatClient.ConnectAsync(_serverIp, _cts.Token);
                 
@@ -363,7 +368,7 @@ namespace ChatBox.Client
             
             pnlChat.IsEnabled = false;
             _allMessages.Clear();
-            lstChatMessages.Items.Clear();
+            _chatViewMessages.Clear();
             lstOnlineUsers.ItemsSource = null;
             
             lblStatus.Text = "Disconnected";
@@ -426,7 +431,7 @@ namespace ChatBox.Client
 
                     if (IsMessageInCurrentChannel(chatMsg))
                     {
-                        lstChatMessages.Items.Add(chatMsg);
+                        _chatViewMessages.Add(chatMsg);
                         lstChatMessages.ScrollIntoView(chatMsg);
                     }
                 }
@@ -476,7 +481,7 @@ namespace ChatBox.Client
                         }
                         else
                         {
-                            lstChatMessages.Items.Add(fileMsg);
+                            _chatViewMessages.Add(fileMsg);
                             lstChatMessages.ScrollIntoView(fileMsg);
                         }
                     }
@@ -484,7 +489,7 @@ namespace ChatBox.Client
                 else if (type == "CLEAR_CHAT")
                 {
                     _allMessages.Clear();
-                    lstChatMessages.Items.Clear();
+                    _chatViewMessages.Clear();
                 }
                 else if (type == "ROOM_NAME")
                 {
@@ -737,7 +742,11 @@ namespace ChatBox.Client
 
                 var newMsg = new ChatMessage { MessageId = Guid.NewGuid().ToString(), Sender = string.IsNullOrWhiteSpace(_displayName) ? "User" : _displayName, Content = text, AvatarBase64 = _avatarBase64, IsMe = true, Timestamp = FormatTimestamp(DateTime.UtcNow.ToString("O")) };
                 _allMessages.Add(newMsg);
-                RefreshMessageList();
+                if (IsMessageInCurrentChannel(newMsg))
+                {
+                    _chatViewMessages.Add(newMsg);
+                    lstChatMessages.ScrollIntoView(newMsg);
+                }
 
                 try
                 {
@@ -777,7 +786,8 @@ namespace ChatBox.Client
                     IsInImageChannel = (_currentChannel == "images")
                 };
                 _allMessages.Add(msg);
-                RefreshMessageList();
+                if (IsMessageInCurrentChannel(msg))
+                    _chatViewMessages.Add(msg);
                 _currentTransferMessage = msg;
 
                 await _fileClient.UploadFileAsync(_serverIp, filePath, fileId);
@@ -787,7 +797,6 @@ namespace ChatBox.Client
 
                 // Báo cho Server lưu db và broadcast
                 await _chatClient.SendMessageAsync($"FILE_READY|{_userId}|{fileId}|{fileInfo.Name}|{fileInfo.Length}");
-                RefreshMessageList();
             }
             catch (Exception ex)
             {
@@ -826,13 +835,8 @@ namespace ChatBox.Client
                 string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
                 if (files != null && files.Length > 0)
                 {
-                    foreach (var file in files)
-                    {
-                        if (File.Exists(file))
-                        {
-                            await UploadFileAsync(file);
-                        }
-                    }
+                    // Upload all dropped files in parallel
+                    await Task.WhenAll(files.Where(File.Exists).Select(f => UploadFileAsync(f)));
                 }
             }
         }
@@ -1021,18 +1025,14 @@ namespace ChatBox.Client
 
         private void RefreshMessageList()
         {
-            lstChatMessages.Items.Clear();
+            _chatViewMessages.Clear();
             foreach (var msg in _allMessages)
             {
                 if (IsMessageInCurrentChannel(msg))
-                {
-                    lstChatMessages.Items.Add(msg);
-                }
+                    _chatViewMessages.Add(msg);
             }
-            if (lstChatMessages.Items.Count > 0)
-            {
-                lstChatMessages.ScrollIntoView(lstChatMessages.Items[lstChatMessages.Items.Count - 1]);
-            }
+            if (_chatViewMessages.Count > 0)
+                lstChatMessages.ScrollIntoView(_chatViewMessages[_chatViewMessages.Count - 1]);
         }
 
         private bool IsMessageInCurrentChannel(ChatMessage msg)
@@ -1445,12 +1445,19 @@ namespace ChatBox.Client
                 _pendingImages.Clear();
                 UpdateDraftPanelVisibility();
 
+                // Mark all as in-flight and add to view immediately (Optimistic UI)
                 foreach (var msg in toSend)
                 {
                     msg.IsDraft = false;
                     msg.IsTransferring = true;
                     _allMessages.Add(msg);
+                    if (IsMessageInCurrentChannel(msg))
+                        _chatViewMessages.Add(msg);
+                }
 
+                // Upload all in parallel — no more sequential blocking
+                await Task.WhenAll(toSend.Select(async msg =>
+                {
                     try
                     {
                         await _fileClient.UploadFileAsync(_serverIp, msg.LocalFilePath, Guid.Parse(msg.FileId));
@@ -1461,9 +1468,7 @@ namespace ChatBox.Client
                     {
                         msg.IsTransferring = false;
                     }
-                }
-
-                RefreshMessageList();
+                }));
             }
             finally
             {
