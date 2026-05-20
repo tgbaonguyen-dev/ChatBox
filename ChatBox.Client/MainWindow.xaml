@@ -1008,7 +1008,19 @@
             </Border>
             
             <!-- Message List (Discord style left-aligned) -->
-            <ListBox x:Name="lstChatMessages" Grid.Row="1" Background="Transparent" BorderThickness="0" Padding="0,10,0,0" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="False" PreviewMouseWheel="SmoothScrollViewer_PreviewMouseWheel" ItemContainerStyle="{StaticResource DiscordMessageItemStyle}">
+            <ListBox x:Name="lstChatMessages" Grid.Row="1" Background="Transparent" BorderThickness="0" Padding="0,10,0,0"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     ScrollViewer.CanContentScroll="True"
+                     ScrollViewer.IsDeferredScrollingEnabled="False"
+                     VirtualizingStackPanel.IsVirtualizing="True"
+                     VirtualizingStackPanel.VirtualizationMode="Recycling"
+                     PreviewMouseWheel="SmoothScrollViewer_PreviewMouseWheel"
+                     ItemContainerStyle="{StaticResource DiscordMessageItemStyle}">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel/>
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <Grid x:Name="MsgGrid" Margin="0,4,0,4">
