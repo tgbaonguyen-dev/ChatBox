@@ -713,12 +713,14 @@ namespace ChatBox.Client
 
                 btn.Click += (s, e) =>
                 {
-                    txtInput.Text += trimmed;
+                    // Append emoji text to RichTextBox properly
+                    var range = new System.Windows.Documents.TextRange(
+                        txtInput.Document.ContentEnd,
+                        txtInput.Document.ContentEnd);
+                    range.Text = trimmed;
+                    txtInput.CaretPosition = txtInput.Document.ContentEnd;
                     if (lblInputPlaceholder != null)
-                    {
-                        string cleanText = (txtInput.Text ?? "").Replace("\r", "").Replace("\n", "").Trim();
-                        lblInputPlaceholder.Visibility = string.IsNullOrEmpty(cleanText) ? Visibility.Visible : Visibility.Collapsed;
-                    }
+                        lblInputPlaceholder.Visibility = Visibility.Collapsed;
                 };
                 panel.Children.Add(btn);
             }
@@ -726,7 +728,7 @@ namespace ChatBox.Client
 
         private async void BtnSendChat_Click(object sender, RoutedEventArgs e)
         {
-            string cleanText = (txtInput.Text ?? "").Replace("\r", "").Replace("\n", "").Trim();
+            string cleanText = GetInputText();
 
             // Send pending images first if any
             if (_pendingImages.Count > 0)
@@ -738,7 +740,7 @@ namespace ChatBox.Client
             if (!string.IsNullOrWhiteSpace(cleanText))
             {
                 string text = cleanText;
-                txtInput.Text = "";
+                txtInput.Document.Blocks.Clear(); // Clear RichTextBox properly
 
                 var newMsg = new ChatMessage { MessageId = Guid.NewGuid().ToString(), Sender = string.IsNullOrWhiteSpace(_displayName) ? "User" : _displayName, Content = text, AvatarBase64 = _avatarBase64, IsMe = true, Timestamp = FormatTimestamp(DateTime.UtcNow.ToString("O")) };
                 _allMessages.Add(newMsg);
@@ -915,8 +917,25 @@ namespace ChatBox.Client
         {
             if (lblInputPlaceholder != null)
             {
-                string cleanText = (txtInput.Text ?? "").Replace("\r", "").Replace("\n", "").Trim();
+                // RichTextBox.Text includes \r\n even when empty — use TextRange instead
+                string cleanText = GetInputText();
                 lblInputPlaceholder.Visibility = string.IsNullOrEmpty(cleanText) ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+
+        /// <summary>Get trimmed plain text from the emoji RichTextBox input.</summary>
+        private string GetInputText()
+        {
+            try
+            {
+                var range = new System.Windows.Documents.TextRange(
+                    txtInput.Document.ContentStart,
+                    txtInput.Document.ContentEnd);
+                return range.Text.Replace("\r", "").Replace("\n", "").Trim();
+            }
+            catch
+            {
+                return (txtInput.Text ?? "").Replace("\r", "").Replace("\n", "").Trim();
             }
         }
 
