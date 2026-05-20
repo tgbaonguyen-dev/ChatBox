@@ -232,13 +232,14 @@ namespace LocalChat.Core.Services
                 var user = await db.Users.FindAsync(userId);
                 if (user != null)
                 {
+                    string oldUsername = user.Username ?? "";
                     user.Username = username;
                     user.AvatarBase64 = avatar;
                     await db.SaveChangesAsync();
-                    OnLog?.Invoke($"[PROFILE] {username} updated their profile.");
+                    OnLog?.Invoke($"[PROFILE] {oldUsername} updated their profile to {username}.");
                     
                     _onlineUsers[sourceClientId] = username;
-                    await BroadcastAsync($"UPDATE_PROFILE|{userId}|{username}|{avatar}");
+                    await BroadcastAsync($"UPDATE_PROFILE|{userId}|{username}|{avatar}|{oldUsername}");
                     await BroadcastOnlineUsersAsync();
                 }
             }

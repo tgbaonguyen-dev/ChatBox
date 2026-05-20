@@ -98,11 +98,8 @@ namespace ChatBox.Client
 
     public class Reaction
     {
-        [System.Text.Json.Serialization.JsonPropertyName("emoji")]
         public string Emoji { get; set; } = "";
-        [System.Text.Json.Serialization.JsonPropertyName("count")]
         public int Count { get; set; }
-        [System.Text.Json.Serialization.JsonPropertyName("userNames")]
         public string UserNames { get; set; } = "";
     }
 
@@ -522,17 +519,19 @@ namespace ChatBox.Client
                 }
                 else if (type == "UPDATE_PROFILE")
                 {
-                    // UPDATE_PROFILE|UserId|Username|AvatarBase64
+                    // UPDATE_PROFILE|UserId|Username|AvatarBase64|OldUsername
                     // When another user updates their profile, update all their messages
                     if (parts.Length >= 4)
                     {
                         string updatedUserId = parts[1];
                         string newUsername = parts[2];
                         string newAvatar = parts[3];
+                        string oldUsername = parts.Length >= 5 ? parts[4] : newUsername;
 
-                        // Update all messages from this user
-                        foreach (var msg in _allMessages.Where(m => m.Sender == newUsername))
+                        // Update all messages from this user using their old username
+                        foreach (var msg in _allMessages.Where(m => m.Sender == oldUsername))
                         {
+                            msg.Sender = newUsername;
                             msg.AvatarBase64 = newAvatar;
                         }
 
@@ -556,10 +555,11 @@ namespace ChatBox.Client
                         {
                             try
                             {
-                                var reactionsList = JsonSerializer.Deserialize<System.Collections.Generic.List<Reaction>>(reactionsJson);
+                                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                                var reactionsList = JsonSerializer.Deserialize<System.Collections.Generic.List<Reaction>>(reactionsJson, options);
                                 if (reactionsList != null)
                                 {
-                                    targetMsg.Reactions = reactionsList;
+                                    targetMsg.Reactions = reactionsList.Where(r => r.Count > 0).ToList();
                                     targetMsg.RefreshReactions();
 
                                     // Refresh UI if message is in current channel
@@ -1308,13 +1308,15 @@ namespace ChatBox.Client
 
                 if (scrollViewer != null)
                 {
-                    double step = 38.0; // Perfect custom step in pixels per tick
+                    // If CanContentScroll is true, we are scrolling by item index, not pixels.
+                    // So we must use a small step like 1 or 2 items, rather than 38.
+                    double step = scrollViewer.CanContentScroll ? 1.0 : 38.0;
                     double targetOffset = scrollViewer.VerticalOffset - (Math.Sign(e.Delta) * step);
                     
                     if (targetOffset < 0) targetOffset = 0;
                     if (targetOffset > scrollViewer.ScrollableHeight) targetOffset = scrollViewer.ScrollableHeight;
 
-                    // Immediately perform a clean pixel-by-pixel scrolling transition
+                    // Immediately perform a clean pixel-by-pixel or item-by-item scrolling transition
                     scrollViewer.ScrollToVerticalOffset(targetOffset);
                     e.Handled = true;
                 }
@@ -1437,7 +1439,7 @@ namespace ChatBox.Client
                     IsMe = true,
                     Timestamp = FormatTimestamp(DateTime.UtcNow.ToString("O")),
                     LocalFilePath = filePath,
-                    IsInImageChannel = true,
+                    IsInImageChannel = (_currentChannel == "images"),
                     IsDraft = true
                 };
 
@@ -1560,6 +1562,7 @@ namespace ChatBox.Client
                 {
                     msg.Reactions.Add(new Reaction { Emoji = emoji, Count = 1, UserNames = _displayName });
                 }
+                msg.Reactions = msg.Reactions.ToList(); // Recreate list to trigger ItemsControl refresh
                 msg.RefreshReactions();
 
                 // Send REACT message to server
@@ -1578,10 +1581,11 @@ namespace ChatBox.Client
         {
             try
             {
-                var reactionsList = JsonSerializer.Deserialize<System.Collections.Generic.List<Reaction>>(reactionsJson);
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var reactionsList = JsonSerializer.Deserialize<System.Collections.Generic.List<Reaction>>(reactionsJson, options);
                 if (reactionsList != null)
                 {
-                    msg.Reactions = reactionsList;
+                    msg.Reactions = reactionsList.Where(r => r.Count > 0).ToList();
                 }
             }
             catch

@@ -1009,8 +1009,10 @@
             
             <!-- Message List (Discord style left-aligned) -->
             <ListBox x:Name="lstChatMessages" Grid.Row="1" Background="Transparent" BorderThickness="0" Padding="0,10,0,0"
+                     VerticalAlignment="Bottom"
                      ScrollViewer.VerticalScrollBarVisibility="Auto"
-                     ScrollViewer.CanContentScroll="True"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.CanContentScroll="False"
                      ScrollViewer.IsDeferredScrollingEnabled="False"
                      VirtualizingStackPanel.IsVirtualizing="True"
                      VirtualizingStackPanel.VirtualizationMode="Recycling"
