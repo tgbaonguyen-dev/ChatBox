@@ -7,13 +7,26 @@ namespace LocalChat.Core.Data
     {
         public DbSet<User> Users { get; set; } = null!;
         public DbSet<ChatMessage> ChatMessages { get; set; } = null!;
+        public DbSet<MessageReaction> MessageReactions { get; set; } = null!;
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             if (!optionsBuilder.IsConfigured)
             {
-                optionsBuilder.UseNpgsql("Host=localhost;Database=ChatBoxDb;Username=postgres;Password=12345");
+                optionsBuilder.UseNpgsql("Host=localhost;Database=ChatBoxDb;Username=postgres;Password=postgres");
             }
+        }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<MessageReaction>(entity =>
+            {
+                entity.HasIndex(e => new { e.MessageId, e.UserId, e.Emoji })
+                    .IsUnique()
+                    .HasDatabaseName("IX_MessageReactions_MessageId_UserId_Emoji");
+            });
         }
     }
 }

@@ -1,11 +1,14 @@
 using LocalChat.Core.Services;
 using System;
+using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -13,6 +16,7 @@ namespace ChatBox.Client
 {
     public class ChatMessage : System.ComponentModel.INotifyPropertyChanged
     {
+        public string MessageId { get; set; } = Guid.NewGuid().ToString();
         public string Sender { get; set; } = "";
         public string Content { get; set; } = "";
         public bool IsFile { get; set; }
@@ -20,16 +24,16 @@ namespace ChatBox.Client
         public long FileSize { get; set; }
         public string AvatarBase64 { get; set; } = "";
         public string DisplayText => IsFile ? $"Attachment: {Content} ({(double)FileSize / (1024 * 1024):F2} MB)" : Content;
-        
+
         public bool IsMe { get; set; }
         public string Timestamp { get; set; } = "";
         public DateTime RawDate { get; set; } = DateTime.UtcNow;
 
         private double _transferProgress;
-        public double TransferProgress 
-        { 
-            get => _transferProgress; 
-            set { _transferProgress = value; OnPropertyChanged(nameof(TransferProgress)); } 
+        public double TransferProgress
+        {
+            get => _transferProgress;
+            set { _transferProgress = value; OnPropertyChanged(nameof(TransferProgress)); }
         }
 
         private bool _isTransferring;
@@ -43,12 +47,12 @@ namespace ChatBox.Client
         public string? LocalFilePath
         {
             get => _localFilePath;
-            set 
-            { 
-                _localFilePath = value; 
-                OnPropertyChanged(nameof(LocalFilePath)); 
-                OnPropertyChanged(nameof(ShowImageControl)); 
-                OnPropertyChanged(nameof(ShowFileControl)); 
+            set
+            {
+                _localFilePath = value;
+                OnPropertyChanged(nameof(LocalFilePath));
+                OnPropertyChanged(nameof(ShowImageControl));
+                OnPropertyChanged(nameof(ShowFileControl));
             }
         }
 
@@ -72,8 +76,31 @@ namespace ChatBox.Client
             set { _isInImageChannel = value; OnPropertyChanged(nameof(IsInImageChannel)); }
         }
 
+        private bool _isDraft;
+        public bool IsDraft
+        {
+            get => _isDraft;
+            set { _isDraft = value; OnPropertyChanged(nameof(IsDraft)); }
+        }
+
+        private System.Collections.Generic.List<Reaction> _reactions = new System.Collections.Generic.List<Reaction>();
+        public System.Collections.Generic.List<Reaction> Reactions
+        {
+            get => _reactions;
+            set { _reactions = value; OnPropertyChanged(nameof(Reactions)); }
+        }
+
         public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged(string propertyName) => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
+
+        public void RefreshReactions() => OnPropertyChanged(nameof(Reactions));
+    }
+
+    public class Reaction
+    {
+        public string Emoji { get; set; } = "";
+        public int Count { get; set; }
+        public string UserNames { get; set; } = "";
     }
 
     public partial class MainWindow : Window
@@ -83,10 +110,13 @@ namespace ChatBox.Client
         private string _serverIp = "";
         private string _userId = "";
         private string _avatarBase64 = "";
+        private string _displayName = "";
         private CancellationTokenSource _cts = new CancellationTokenSource();
         private ChatMessage? _currentTransferMessage;
-        
-        private System.Collections.Generic.List<ChatMessage> _allMessages = new System.Collections.Generic.List<ChatMessage>();
+        private ObservableCollection<ChatMessage> _pendingImages = new ObservableCollection<ChatMessage>();
+
+        private ObservableCollection<ChatMessage> _allMessages = new ObservableCollection<ChatMessage>();
+        private System.Collections.ObjectModel.ObservableCollection<ChatMessage> _chatViewMessages = new ObservableCollection<ChatMessage>();
         private string _currentChannel = "chat";
 
         public MainWindow()
@@ -94,6 +124,13 @@ namespace ChatBox.Client
             InitializeComponent();
             LoadOrGenerateConfig();
             InitializeEmojis();
+
+            // Bind staging panel to pending images list
+            DraftStagingItems.ItemsSource = _pendingImages;
+            UpdateDraftPanelVisibility();
+
+            // Bind chat list once — ObservableCollection handles incremental UI updates
+            lstChatMessages.ItemsSource = _chatViewMessages;
 
             _chatClient.OnMessageReceived += HandleIncomingMessage;
             _fileClient.OnUploadProgress += UpdateProgress;
@@ -110,6 +147,7 @@ namespace ChatBox.Client
 
         private string GetConfigPath()
         {
+            // Use %AppData% for config so it persists across app updates
             string appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LANChatBox");
             if (!Directory.Exists(appData))
             {
@@ -150,6 +188,7 @@ namespace ChatBox.Client
                         // Set footer details & initials fallback
                         string name = string.IsNullOrWhiteSpace(txtUsername.Text) ? "User" : txtUsername.Text.Trim();
                         lblFooterUsername.Text = name;
+                        _displayName = name;
                         char initial = name.Length > 0 ? char.ToUpper(name[0]) : 'U';
                         lblAvatarInitials.Text = initial.ToString();
                         lblFooterInitials.Text = initial.ToString();
@@ -253,7 +292,8 @@ namespace ChatBox.Client
 
             try
             {
-                lstChatMessages.Items.Clear();
+                _allMessages.Clear();
+                _chatViewMessages.Clear();
                 if (_cts.IsCancellationRequested) _cts = new CancellationTokenSource();
                 await _chatClient.ConnectAsync(_serverIp, _cts.Token);
                 
@@ -325,7 +365,7 @@ namespace ChatBox.Client
             
             pnlChat.IsEnabled = false;
             _allMessages.Clear();
-            lstChatMessages.Items.Clear();
+            _chatViewMessages.Clear();
             lstOnlineUsers.ItemsSource = null;
             
             lblStatus.Text = "Disconnected";
@@ -362,55 +402,63 @@ namespace ChatBox.Client
 
                 string type = parts[0];
                 
-                if (type == "MSG") // MSG|Sender|Content|AvatarBase64|Timestamp
+                if (type == "MSG") // MSG|MessageId|Sender|Content|AvatarBase64|Timestamp|ReactionsJson
                 {
-                    string sender = parts[1];
-                    string content = parts[2];
-                    string avatar = parts.Length > 3 ? parts[3] : "";
-                    string time = parts.Length > 4 ? FormatTimestamp(parts[4]) : FormatTimestamp(DateTime.UtcNow.ToString("O"));
-                    bool isMe = (sender == txtUsername.Text || sender == "Me");
-                    var chatMsg = new ChatMessage 
-                    { 
-                        Sender = sender, 
-                        Content = content, 
-                        IsFile = false, 
-                        AvatarBase64 = avatar, 
-                        IsMe = isMe, 
+                    if (parts.Length < 5) return;
+                    string messageId = parts[1];
+                    string sender = parts[2];
+                    string content = parts[3];
+                    string avatar = parts[4];
+                    string time = parts.Length > 5 ? FormatTimestamp(parts[5]) : FormatTimestamp(DateTime.UtcNow.ToString("O"));
+                    string reactionsJson = parts.Length > 6 ? parts[6] : "[]";
+                    bool isMe = (sender == txtUsername.Text || sender == _displayName);
+                    var chatMsg = new ChatMessage
+                    {
+                        MessageId = messageId,
+                        Sender = sender,
+                        Content = content,
+                        IsFile = false,
+                        AvatarBase64 = avatar,
+                        IsMe = isMe,
                         Timestamp = time,
-                        RawDate = DateTime.TryParse(parts.Length > 4 ? parts[4] : "", out DateTime rdt) ? rdt : DateTime.UtcNow
+                        RawDate = DateTime.TryParse(parts[5], out DateTime rdt) ? rdt : DateTime.UtcNow
                     };
+                    ParseReactionsToMessage(chatMsg, reactionsJson);
                     _allMessages.Add(chatMsg);
 
                     if (IsMessageInCurrentChannel(chatMsg))
                     {
-                        lstChatMessages.Items.Add(chatMsg);
+                        _chatViewMessages.Add(chatMsg);
                         lstChatMessages.ScrollIntoView(chatMsg);
                     }
                 }
-                else if (type == "FILE_READY") // FILE_READY|FileId|FileName|Size|Sender|AvatarBase64|Timestamp
+                else if (type == "FILE_READY") // FILE_READY|FileId|FileName|Size|Sender|AvatarBase64|Timestamp|ReactionsJson
                 {
-                    if (parts.Length < 6) return;
+                    if (parts.Length < 7) return;
                     string fileId = parts[1];
                     string fileName = parts[2];
                     long size = long.Parse(parts[3]);
                     string sender = parts[4];
                     string avatar = parts[5];
                     string time = parts.Length > 6 ? FormatTimestamp(parts[6]) : FormatTimestamp(DateTime.UtcNow.ToString("O"));
-                    bool isMe = (sender == txtUsername.Text || sender == "Me");
+                    string reactionsJson = parts.Length > 7 ? parts[7] : "[]";
+                    bool isMe = (sender == txtUsername.Text || sender == _displayName);
 
-                    var fileMsg = new ChatMessage 
-                    { 
-                        Sender = sender, 
-                        Content = fileName, 
-                        IsFile = true, 
-                        FileId = fileId, 
+                    var fileMsg = new ChatMessage
+                    {
+                        MessageId = fileId,
+                        Sender = sender,
+                        Content = fileName,
+                        IsFile = true,
+                        FileId = fileId,
                         FileSize = size,
                         AvatarBase64 = avatar,
                         IsMe = isMe,
                         Timestamp = time,
                         IsInImageChannel = (_currentChannel == "images"),
-                        RawDate = DateTime.TryParse(parts.Length > 6 ? parts[6] : "", out DateTime rdt2) ? rdt2 : DateTime.UtcNow
+                        RawDate = DateTime.TryParse(parts[6], out DateTime rdt2) ? rdt2 : DateTime.UtcNow
                     };
+                    ParseReactionsToMessage(fileMsg, reactionsJson);
                     _allMessages.Add(fileMsg);
 
                     if (fileMsg.IsImage)
@@ -430,7 +478,7 @@ namespace ChatBox.Client
                         }
                         else
                         {
-                            lstChatMessages.Items.Add(fileMsg);
+                            _chatViewMessages.Add(fileMsg);
                             lstChatMessages.ScrollIntoView(fileMsg);
                         }
                     }
@@ -438,7 +486,7 @@ namespace ChatBox.Client
                 else if (type == "CLEAR_CHAT")
                 {
                     _allMessages.Clear();
-                    lstChatMessages.Items.Clear();
+                    _chatViewMessages.Clear();
                 }
                 else if (type == "ROOM_NAME")
                 {
@@ -467,6 +515,65 @@ namespace ChatBox.Client
                                 users[i] += " (You)";
                         }
                         lstOnlineUsers.ItemsSource = users;
+                    }
+                }
+                else if (type == "UPDATE_PROFILE")
+                {
+                    // UPDATE_PROFILE|UserId|Username|AvatarBase64|OldUsername
+                    // When another user updates their profile, update all their messages
+                    if (parts.Length >= 4)
+                    {
+                        string updatedUserId = parts[1];
+                        string newUsername = parts[2];
+                        string newAvatar = parts[3];
+                        string oldUsername = parts.Length >= 5 ? parts[4] : newUsername;
+
+                        // Update all messages from this user using their old username
+                        foreach (var msg in _allMessages.Where(m => m.Sender == oldUsername))
+                        {
+                            msg.Sender = newUsername;
+                            msg.AvatarBase64 = newAvatar;
+                        }
+
+                        // Refresh UI if in chat channel
+                        if (_currentChannel == "chat")
+                        {
+                            RefreshMessageList();
+                        }
+                    }
+                }
+                else if (type == "REACTION_UPDATE")
+                {
+                    // REACTION_UPDATE|MessageId|ReactionsJson
+                    if (parts.Length >= 3)
+                    {
+                        string messageId = parts[1];
+                        string reactionsJson = parts[2];
+
+                        var targetMsg = _allMessages.FirstOrDefault(m => m.MessageId == messageId);
+                        if (targetMsg != null)
+                        {
+                            try
+                            {
+                                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                                var reactionsList = JsonSerializer.Deserialize<System.Collections.Generic.List<Reaction>>(reactionsJson, options);
+                                if (reactionsList != null)
+                                {
+                                    targetMsg.Reactions = reactionsList.Where(r => r.Count > 0).ToList();
+                                    targetMsg.RefreshReactions();
+
+                                    // Refresh UI if message is in current channel
+                                    if (IsMessageInCurrentChannel(targetMsg))
+                                    {
+                                        RefreshMessageList();
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // Invalid JSON, ignore
+                            }
+                        }
                     }
                 }
             });
@@ -606,12 +713,14 @@ namespace ChatBox.Client
 
                 btn.Click += (s, e) =>
                 {
-                    txtInput.Text += trimmed;
+                    // Append emoji text to RichTextBox properly
+                    var range = new System.Windows.Documents.TextRange(
+                        txtInput.Document.ContentEnd,
+                        txtInput.Document.ContentEnd);
+                    range.Text = trimmed;
+                    txtInput.CaretPosition = txtInput.Document.ContentEnd;
                     if (lblInputPlaceholder != null)
-                    {
-                        string cleanText = (txtInput.Text ?? "").Replace("\r", "").Replace("\n", "").Trim();
-                        lblInputPlaceholder.Visibility = string.IsNullOrEmpty(cleanText) ? Visibility.Visible : Visibility.Collapsed;
-                    }
+                        lblInputPlaceholder.Visibility = Visibility.Collapsed;
                 };
                 panel.Children.Add(btn);
             }
@@ -619,24 +728,37 @@ namespace ChatBox.Client
 
         private async void BtnSendChat_Click(object sender, RoutedEventArgs e)
         {
-            string cleanText = (txtInput.Text ?? "").Replace("\r", "").Replace("\n", "").Trim();
-            if (string.IsNullOrWhiteSpace(cleanText)) return;
+            string cleanText = GetInputText();
 
-            string text = cleanText;
-            txtInput.Text = "";
-
-            var newMsg = new ChatMessage { Sender = "Me", Content = text, AvatarBase64 = _avatarBase64, IsMe = true, Timestamp = FormatTimestamp(DateTime.UtcNow.ToString("O")) };
-            _allMessages.Add(newMsg);
-            RefreshMessageList();
-
-            try
+            // Send pending images first if any
+            if (_pendingImages.Count > 0)
             {
-                await _chatClient.SendMessageAsync($"MSG|{_userId}|{text}");
+                await SendPendingImagesAsync();
             }
-            catch (Exception)
+
+            // Then send text message if there's text
+            if (!string.IsNullOrWhiteSpace(cleanText))
             {
-                MessageBox.Show("Lost connection to server! Your message could not be sent.");
-                BtnDisconnect_Click(null, null);
+                string text = cleanText;
+                txtInput.Document.Blocks.Clear(); // Clear RichTextBox properly
+
+                var newMsg = new ChatMessage { MessageId = Guid.NewGuid().ToString(), Sender = string.IsNullOrWhiteSpace(_displayName) ? "User" : _displayName, Content = text, AvatarBase64 = _avatarBase64, IsMe = true, Timestamp = FormatTimestamp(DateTime.UtcNow.ToString("O")) };
+                _allMessages.Add(newMsg);
+                if (IsMessageInCurrentChannel(newMsg))
+                {
+                    _chatViewMessages.Add(newMsg);
+                    lstChatMessages.ScrollIntoView(newMsg);
+                }
+
+                try
+                {
+                    await _chatClient.SendMessageAsync($"MSG|{_userId}|{newMsg.MessageId}|{text}");
+                }
+                catch (Exception)
+                {
+                    MessageBox.Show("Lost connection to server! Your message could not be sent.");
+                    BtnDisconnect_Click(null, null);
+                }
             }
         }
 
@@ -649,12 +771,13 @@ namespace ChatBox.Client
 
             try
             {
-                var msg = new ChatMessage 
-                { 
-                    Sender = "Me", 
-                    Content = fileInfo.Name, 
-                    IsFile = true, 
-                    FileId = fileId.ToString(), 
+                var msg = new ChatMessage
+                {
+                    MessageId = fileId.ToString(), // Match server message ID
+                    Sender = string.IsNullOrWhiteSpace(_displayName) ? "User" : _displayName,
+                    Content = fileInfo.Name,
+                    IsFile = true,
+                    FileId = fileId.ToString(),
                     FileSize = fileInfo.Length,
                     AvatarBase64 = _avatarBase64,
                     IsTransferring = true,
@@ -665,7 +788,8 @@ namespace ChatBox.Client
                     IsInImageChannel = (_currentChannel == "images")
                 };
                 _allMessages.Add(msg);
-                RefreshMessageList();
+                if (IsMessageInCurrentChannel(msg))
+                    _chatViewMessages.Add(msg);
                 _currentTransferMessage = msg;
 
                 await _fileClient.UploadFileAsync(_serverIp, filePath, fileId);
@@ -675,7 +799,6 @@ namespace ChatBox.Client
 
                 // Báo cho Server lưu db và broadcast
                 await _chatClient.SendMessageAsync($"FILE_READY|{_userId}|{fileId}|{fileInfo.Name}|{fileInfo.Length}");
-                RefreshMessageList();
             }
             catch (Exception ex)
             {
@@ -714,13 +837,8 @@ namespace ChatBox.Client
                 string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
                 if (files != null && files.Length > 0)
                 {
-                    foreach (var file in files)
-                    {
-                        if (File.Exists(file))
-                        {
-                            await UploadFileAsync(file);
-                        }
-                    }
+                    // Upload all dropped files in parallel
+                    await Task.WhenAll(files.Where(File.Exists).Select(f => UploadFileAsync(f)));
                 }
             }
         }
@@ -783,11 +901,12 @@ namespace ChatBox.Client
 
         private void TxtUsername_TextChanged(object sender, TextChangedEventArgs e)
         {
+            _displayName = string.IsNullOrWhiteSpace(txtUsername.Text) ? "User" : txtUsername.Text.Trim();
             if (lblFooterUsername != null)
             {
-                string name = string.IsNullOrWhiteSpace(txtUsername.Text) ? "User" : txtUsername.Text.Trim();
+                string name = _displayName;
                 lblFooterUsername.Text = name;
-                
+
                 char initial = name.Length > 0 ? char.ToUpper(name[0]) : 'U';
                 if (lblAvatarInitials != null) lblAvatarInitials.Text = initial.ToString();
                 if (lblFooterInitials != null) lblFooterInitials.Text = initial.ToString();
@@ -798,8 +917,25 @@ namespace ChatBox.Client
         {
             if (lblInputPlaceholder != null)
             {
-                string cleanText = (txtInput.Text ?? "").Replace("\r", "").Replace("\n", "").Trim();
+                // RichTextBox.Text includes \r\n even when empty — use TextRange instead
+                string cleanText = GetInputText();
                 lblInputPlaceholder.Visibility = string.IsNullOrEmpty(cleanText) ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+
+        /// <summary>Get trimmed plain text from the emoji RichTextBox input.</summary>
+        private string GetInputText()
+        {
+            try
+            {
+                var range = new System.Windows.Documents.TextRange(
+                    txtInput.Document.ContentStart,
+                    txtInput.Document.ContentEnd);
+                return range.Text.Replace("\r", "").Replace("\n", "").Trim();
+            }
+            catch
+            {
+                return (txtInput.Text ?? "").Replace("\r", "").Replace("\n", "").Trim();
             }
         }
 
@@ -901,20 +1037,21 @@ namespace ChatBox.Client
             SelectChannel("files");
         }
 
+        private void UpdateDraftPanelVisibility()
+        {
+            DraftStagingPanel.Visibility = _pendingImages.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         private void RefreshMessageList()
         {
-            lstChatMessages.Items.Clear();
+            _chatViewMessages.Clear();
             foreach (var msg in _allMessages)
             {
                 if (IsMessageInCurrentChannel(msg))
-                {
-                    lstChatMessages.Items.Add(msg);
-                }
+                    _chatViewMessages.Add(msg);
             }
-            if (lstChatMessages.Items.Count > 0)
-            {
-                lstChatMessages.ScrollIntoView(lstChatMessages.Items[lstChatMessages.Items.Count - 1]);
-            }
+            if (_chatViewMessages.Count > 0)
+                lstChatMessages.ScrollIntoView(_chatViewMessages[_chatViewMessages.Count - 1]);
         }
 
         private bool IsMessageInCurrentChannel(ChatMessage msg)
@@ -1171,13 +1308,15 @@ namespace ChatBox.Client
 
                 if (scrollViewer != null)
                 {
-                    double step = 38.0; // Perfect custom step in pixels per tick
+                    // If CanContentScroll is true, we are scrolling by item index, not pixels.
+                    // So we must use a small step like 1 or 2 items, rather than 38.
+                    double step = scrollViewer.CanContentScroll ? 1.0 : 38.0;
                     double targetOffset = scrollViewer.VerticalOffset - (Math.Sign(e.Delta) * step);
                     
                     if (targetOffset < 0) targetOffset = 0;
                     if (targetOffset > scrollViewer.ScrollableHeight) targetOffset = scrollViewer.ScrollableHeight;
 
-                    // Immediately perform a clean pixel-by-pixel scrolling transition
+                    // Immediately perform a clean pixel-by-pixel or item-by-item scrolling transition
                     scrollViewer.ScrollToVerticalOffset(targetOffset);
                     e.Handled = true;
                 }
@@ -1211,7 +1350,7 @@ namespace ChatBox.Client
             }
         }
 
-        private void TxtInput_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        private async void TxtInput_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
             var isControl = System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Control);
             var isAlt = System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Alt);
@@ -1244,6 +1383,7 @@ namespace ChatBox.Client
                     return;
                 }
                 e.Handled = true;
+                await SendPendingImagesAsync();
                 BtnSendChat_Click(this, new RoutedEventArgs());
             }
             else if (e.Key == System.Windows.Input.Key.V && isControl)
@@ -1256,25 +1396,29 @@ namespace ChatBox.Client
             }
         }
 
-        private async void HandleImagePaste()
+        private void HandleImagePaste()
         {
             try
             {
+                if (_pendingImages.Count >= 5)
+                {
+                    MessageBox.Show("Maximum 5 images pending. Send or remove some first.", "Limit Reached", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
                 var image = Clipboard.GetImage();
                 if (image == null) return;
 
-                string tempDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TempPaste");
-                if (!System.IO.Directory.Exists(tempDir))
-                {
-                    System.IO.Directory.CreateDirectory(tempDir);
-                }
+                string tempDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "TempPaste");
+                if (!Directory.Exists(tempDir))
+                    Directory.CreateDirectory(tempDir);
 
                 string fileName = $"ClipboardImage_{DateTime.Now:yyyyMMdd_HHmmss}.png";
-                string filePath = System.IO.Path.Combine(tempDir, fileName);
+                string filePath = Path.Combine(tempDir, fileName);
 
                 using (var fileStream = new FileStream(filePath, FileMode.Create))
                 {
-                    BitmapEncoder encoder = new PngBitmapEncoder();
+                    var encoder = new PngBitmapEncoder();
                     encoder.Frames.Add(BitmapFrame.Create(image));
                     encoder.Save(fileStream);
                 }
@@ -1282,53 +1426,74 @@ namespace ChatBox.Client
                 Guid fileId = Guid.NewGuid();
                 var fileInfo = new FileInfo(filePath);
 
-                var msg = new ChatMessage 
-                { 
-                    Sender = "Me", 
-                    Content = fileInfo.Name, 
-                    IsFile = true, 
-                    FileId = fileId.ToString(), 
+                var msg = new ChatMessage
+                {
+                    MessageId = fileId.ToString(), // Use same ID as FileId so server round-trip matches
+                    Sender = _displayName,
+                    Content = fileInfo.Name,
+                    IsFile = true,
+                    FileId = fileId.ToString(),
                     FileSize = fileInfo.Length,
                     AvatarBase64 = _avatarBase64,
-                    IsTransferring = true,
-                    TransferProgress = 0,
+                    IsTransferring = false,
                     IsMe = true,
                     Timestamp = FormatTimestamp(DateTime.UtcNow.ToString("O")),
                     LocalFilePath = filePath,
-                    IsInImageChannel = true
+                    IsInImageChannel = (_currentChannel == "images"),
+                    IsDraft = true
                 };
-                
-                _allMessages.Add(msg);
-                if (_currentChannel == "images")
-                {
-                    RefreshImageGallery();
-                }
-                else
-                {
-                    RefreshMessageList();
-                }
 
-                _currentTransferMessage = msg;
-
-                await _fileClient.UploadFileAsync(_serverIp, filePath, fileId);
-
-                msg.IsTransferring = false;
-                _currentTransferMessage = null;
-
-                await _chatClient.SendMessageAsync($"FILE_READY|{_userId}|{fileId}|{fileInfo.Name}|{fileInfo.Length}");
-                
-                if (_currentChannel == "images")
-                {
-                    RefreshImageGallery();
-                }
-                else
-                {
-                    RefreshMessageList();
-                }
+                // Add to staging panel only (not message list yet)
+                _pendingImages.Add(msg);
+                UpdateDraftPanelVisibility();
             }
             catch (Exception ex)
             {
                 MessageBox.Show("Failed to paste image: " + ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private bool _isSendingPendingImages = false;
+
+        private async Task SendPendingImagesAsync()
+        {
+            if (_pendingImages.Count == 0 || _isSendingPendingImages) return;
+
+            _isSendingPendingImages = true;
+            try
+            {
+                var toSend = _pendingImages.ToList();
+                _pendingImages.Clear();
+                UpdateDraftPanelVisibility();
+
+                // Mark all as in-flight and add to view immediately (Optimistic UI)
+                foreach (var msg in toSend)
+                {
+                    msg.IsDraft = false;
+                    msg.IsTransferring = true;
+                    _allMessages.Add(msg);
+                    if (IsMessageInCurrentChannel(msg))
+                        _chatViewMessages.Add(msg);
+                }
+
+                // Upload all in parallel — no more sequential blocking
+                await Task.WhenAll(toSend.Select(async msg =>
+                {
+                    try
+                    {
+                        await _fileClient.UploadFileAsync(_serverIp, msg.LocalFilePath, Guid.Parse(msg.FileId));
+                        msg.IsTransferring = false;
+                        await _chatClient.SendMessageAsync($"FILE_READY|{_userId}|{msg.FileId}|{msg.Content}|{msg.FileSize}");
+                    }
+                    catch
+                    {
+                        msg.IsTransferring = false;
+                    }
+                }));
+            }
+            finally
+            {
+                _isSendingPendingImages = false;
             }
         }
 
@@ -1360,6 +1525,104 @@ namespace ChatBox.Client
         private void BtnClose_Click(object sender, RoutedEventArgs e)
         {
             this.Close();
+        }
+
+        private async void ReactionButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string emoji)
+            {
+                // QuickReactionBar is inside the ListBoxItem ControlTemplate,
+                // so btn.DataContext is NOT the ChatMessage. Walk up to find ListBoxItem.
+                ChatMessage? msg = null;
+                DependencyObject? current = btn;
+                while (current != null)
+                {
+                    current = VisualTreeHelper.GetParent(current);
+                    if (current is ListBoxItem lbi && lbi.DataContext is ChatMessage m)
+                    {
+                        msg = m;
+                        break;
+                    }
+                }
+
+                if (msg == null) return;
+
+                // Toggle reaction - add or remove
+                var existingReaction = msg.Reactions.FirstOrDefault(r => r.Emoji == emoji);
+                if (existingReaction != null)
+                {
+                    existingReaction.Count--;
+                    existingReaction.UserNames = existingReaction.UserNames.Replace(_displayName, "").Trim();
+                    if (existingReaction.Count <= 0)
+                    {
+                        msg.Reactions.Remove(existingReaction);
+                    }
+                }
+                else
+                {
+                    msg.Reactions.Add(new Reaction { Emoji = emoji, Count = 1, UserNames = _displayName });
+                }
+                msg.Reactions = msg.Reactions.ToList(); // Recreate list to trigger ItemsControl refresh
+                msg.RefreshReactions();
+
+                // Send REACT message to server
+                try
+                {
+                    await _chatClient.SendMessageAsync($"REACT|{_userId}|{msg.MessageId}|{emoji}");
+                }
+                catch
+                {
+                    // Silently fail - local state already updated
+                }
+            }
+        }
+
+        private void ParseReactionsToMessage(ChatMessage msg, string reactionsJson)
+        {
+            try
+            {
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var reactionsList = JsonSerializer.Deserialize<System.Collections.Generic.List<Reaction>>(reactionsJson, options);
+                if (reactionsList != null)
+                {
+                    msg.Reactions = reactionsList.Where(r => r.Count > 0).ToList();
+                }
+            }
+            catch
+            {
+                // Invalid JSON, ignore
+            }
+        }
+
+        private void ReactionTrigger_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.DataContext is ChatMessage msg)
+            {
+                // Find the popup in the visual tree and open it
+                var parent = btn.Parent;
+                while (parent != null && !(parent is Grid))
+                {
+                    parent = VisualTreeHelper.GetParent(parent) as FrameworkElement;
+                }
+                if (parent is Grid grid)
+                {
+                    var popup = grid.FindName("ReactionPopup") as Popup;
+                    if (popup != null)
+                    {
+                        popup.DataContext = msg;
+                        popup.IsOpen = true;
+                    }
+                }
+            }
+        }
+
+        private void BtnRemovePending_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is ChatMessage msg)
+            {
+                _pendingImages.Remove(msg);
+                UpdateDraftPanelVisibility();
+            }
         }
 
         private void ToggleMaximize()

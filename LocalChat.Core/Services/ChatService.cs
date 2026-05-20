@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using LocalChat.Core.Data;
@@ -98,7 +99,7 @@ namespace LocalChat.Core.Services
                     _clients.TryRemove(clientId, out _);
                     if (_onlineUsers.TryRemove(clientId, out string? username))
                     {
-                        await BroadcastAsync($"MSG|System|{username} has left the chat.||{DateTime.UtcNow:O}");
+                        await BroadcastAsync($"MSG|{Guid.NewGuid()}|System|{username} has left the chat.||{DateTime.UtcNow:O}");
                         await BroadcastOnlineUsersAsync();
                     }
                     OnLog?.Invoke($"Client disconnected: {clientId}");
@@ -145,6 +146,13 @@ namespace LocalChat.Core.Services
                     
                 history.Reverse();
 
+                // Batch-load all reactions for all messages upfront to avoid N+1 queries
+                var messageIds = history.Select(m => m.Id).ToList();
+                var allReactions = await db.MessageReactions
+                    .Include(r => r.User)
+                    .Where(r => messageIds.Contains(r.MessageId))
+                    .ToListAsync();
+
                 if (_clients.TryGetValue(sourceClientId, out var client))
                 {
                     var writer = new StreamWriter(client.GetStream(), Encoding.UTF8) { AutoFlush = true };
@@ -153,37 +161,44 @@ namespace LocalChat.Core.Services
                     foreach (var msg in history)
                     {
                         if (msg.Sender == null) continue;
+
+                        // Get reactions for this message from preloaded data
+                        var msgReactions = allReactions.Where(r => r.MessageId == msg.Id).ToList();
+                        var reactionsJson = JsonSerializer.Serialize(GroupReactions(msgReactions));
+
                         if (msg.IsFile)
                         {
-                            await writer.WriteLineAsync($"FILE_READY|{msg.FileId}|{msg.Content}|{msg.FileSize}|{msg.Sender.Username}|{msg.Sender.AvatarBase64}|{msg.Timestamp:O}");
+                            await writer.WriteLineAsync($"FILE_READY|{msg.FileId}|{msg.Content}|{msg.FileSize}|{msg.Sender.Username}|{msg.Sender.AvatarBase64}|{msg.Timestamp:O}|{reactionsJson}");
                         }
                         else
                         {
-                            await writer.WriteLineAsync($"MSG|{msg.Sender.Username}|{msg.Content}|{msg.Sender.AvatarBase64}|{msg.Timestamp:O}");
+                            await writer.WriteLineAsync($"MSG|{msg.Id}|{msg.Sender.Username}|{msg.Content}|{msg.Sender.AvatarBase64}|{msg.Timestamp:O}|{reactionsJson}");
                         }
                     }
                 }
                 
-                await BroadcastAsync($"MSG|System|{username} has joined the chat.||{DateTime.UtcNow:O}", sourceClientId);
+                await BroadcastAsync($"MSG|{Guid.NewGuid()}|System|{username} has joined the chat.||{DateTime.UtcNow:O}", sourceClientId);
                 OnLog?.Invoke($"[JOIN] {username}");
                 
                 _onlineUsers[sourceClientId] = username;
                 await BroadcastOnlineUsersAsync();
             }
-            else if (type == "MSG") // MSG|UserId|Content
+            else if (type == "MSG") // MSG|UserId|ClientMessageId|Content
             {
+                if (parts.Length < 4) return;
                 string userId = parts[1];
-                string content = string.Join("|", parts, 2, parts.Length - 2);
+                string clientMessageId = parts[2];
+                string content = string.Join("|", parts, 3, parts.Length - 3);
 
                 var user = await db.Users.FindAsync(userId);
                 if (user != null)
                 {
-                    var msg = new ChatMessage { SenderId = userId, Content = content, IsFile = false, Timestamp = DateTime.UtcNow };
+                    var msg = new ChatMessage { Id = clientMessageId, SenderId = userId, Content = content, IsFile = false, Timestamp = DateTime.UtcNow };
                     db.ChatMessages.Add(msg);
                     await db.SaveChangesAsync();
 
                     // Thêm sourceClientId để không dội ngược tin nhắn về người gửi
-                    await BroadcastAsync($"MSG|{user.Username}|{content}|{user.AvatarBase64}|{msg.Timestamp:O}", sourceClientId);
+                    await BroadcastAsync($"MSG|{msg.Id}|{user.Username}|{content}|{user.AvatarBase64}|{msg.Timestamp:O}", sourceClientId);
                     OnLog?.Invoke($"[MSG] {user.Username}: {content}");
                 }
             }
@@ -198,12 +213,12 @@ namespace LocalChat.Core.Services
                 var user = await db.Users.FindAsync(userId);
                 if (user != null)
                 {
-                    var msg = new ChatMessage { SenderId = userId, Content = fileName, IsFile = true, FileId = fileId, FileSize = size, Timestamp = DateTime.UtcNow };
+                    var msg = new ChatMessage { Id = fileId, SenderId = userId, Content = fileName, IsFile = true, FileId = fileId, FileSize = size, Timestamp = DateTime.UtcNow };
                     db.ChatMessages.Add(msg);
                     await db.SaveChangesAsync();
 
                     // Thêm sourceClientId
-                    await BroadcastAsync($"FILE_READY|{fileId}|{fileName}|{size}|{user.Username}|{user.AvatarBase64}|{msg.Timestamp:O}", sourceClientId);
+                    await BroadcastAsync($"FILE_READY|{fileId}|{fileName}|{size}|{user.Username}|{user.AvatarBase64}|{msg.Timestamp:O}|[]", sourceClientId);
                     OnLog?.Invoke($"[FILE] {user.Username}: {fileName}");
                 }
             }
@@ -217,16 +232,110 @@ namespace LocalChat.Core.Services
                 var user = await db.Users.FindAsync(userId);
                 if (user != null)
                 {
+                    string oldUsername = user.Username ?? "";
                     user.Username = username;
                     user.AvatarBase64 = avatar;
                     await db.SaveChangesAsync();
-                    OnLog?.Invoke($"[PROFILE] {username} updated their profile.");
+                    OnLog?.Invoke($"[PROFILE] {oldUsername} updated their profile to {username}.");
                     
                     _onlineUsers[sourceClientId] = username;
-                    await BroadcastAsync($"UPDATE_PROFILE|{userId}|{username}|{avatar}");
+                    await BroadcastAsync($"UPDATE_PROFILE|{userId}|{username}|{avatar}|{oldUsername}");
                     await BroadcastOnlineUsersAsync();
                 }
             }
+            else if (type == "REACT") // REACT|UserId|MessageId|Emoji
+            {
+                if (parts.Length < 4) return;
+                string userId = parts[1];
+                string messageId = parts[2];
+                string emoji = parts[3];
+
+                // Validate emoji parameter
+                if (string.IsNullOrWhiteSpace(emoji) || emoji.Length > 32)
+                {
+                    OnLog?.Invoke($"[REACT] Invalid emoji received from user {userId}: '{emoji}'");
+                    return;
+                }
+
+                var user = await db.Users.FindAsync(userId);
+                var chatMessage = await db.ChatMessages.FindAsync(messageId);
+
+                if (user == null)
+                {
+                    OnLog?.Invoke($"[REACT] Reaction failed - user not found: {userId}");
+                    return;
+                }
+                if (chatMessage == null)
+                {
+                    OnLog?.Invoke($"[REACT] Reaction failed - message not found: {messageId}");
+                    return;
+                }
+
+                // Check if user already reacted with this emoji (toggle behavior)
+                var existingReaction = await db.MessageReactions
+                    .FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == userId && r.Emoji == emoji);
+
+                if (existingReaction != null)
+                {
+                    // Remove reaction (toggle off)
+                    db.MessageReactions.Remove(existingReaction);
+                    await db.SaveChangesAsync();
+                    OnLog?.Invoke($"[REACT] {user.Username} removed reaction {emoji} from message {messageId}");
+                }
+                else
+                {
+                    // Add reaction
+                    var reaction = new MessageReaction
+                    {
+                        MessageId = messageId,
+                        UserId = userId,
+                        Emoji = emoji,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    db.MessageReactions.Add(reaction);
+                    await db.SaveChangesAsync();
+                    OnLog?.Invoke($"[REACT] {user.Username} reacted {emoji} to message {messageId}");
+                }
+
+                await BroadcastReactionUpdate(messageId, db);
+            }
+        }
+
+        private string SerializeReactions(IEnumerable<MessageReaction> reactions)
+        {
+            var dtos = GroupReactions(reactions);
+            return JsonSerializer.Serialize(dtos);
+        }
+
+        private List<ReactionDto> GroupReactions(IEnumerable<MessageReaction> reactions)
+        {
+            return reactions
+                .GroupBy(r => r.Emoji)
+                .Select(g => new ReactionDto
+                {
+                    Emoji = g.Key,
+                    Count = g.Count(),
+                    UserNames = string.Join(", ", g.Where(r => r.User != null).Select(r => r.User!.Username))
+                })
+                .ToList();
+        }
+
+        private class ReactionDto
+        {
+            public string Emoji { get; set; } = "";
+            public int Count { get; set; }
+            public string UserNames { get; set; } = "";
+        }
+
+        private async Task BroadcastReactionUpdate(string messageId, ChatDbContext db)
+        {
+            var reactions = await db.MessageReactions
+                .Include(r => r.User)
+                .Where(r => r.MessageId == messageId)
+                .ToListAsync();
+
+            var reactionsJson = SerializeReactions(reactions);
+            await BroadcastAsync($"REACTION_UPDATE|{messageId}|{reactionsJson}");
         }
 
         public async Task BroadcastAsync(string message, string excludeClientId = "")

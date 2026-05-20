@@ -9,6 +9,8 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <cv:Base64ImageConverter x:Key="Base64Converter"/>
+        <cv:AvatarInitialsVisibilityConverter x:Key="AvatarInitialsVisConverter"/>
+        <cv:FirstLetterConverter x:Key="FirstLetterConverter"/>
 
         <!-- Premium Custom Scrollbar Thumb Template -->
         <Style x:Key="ScrollThumbs" TargetType="{x:Type Thumb}">
@@ -63,12 +65,242 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
                         <Border x:Name="MessageBorder" Background="{TemplateBinding Background}" BorderThickness="0" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter />
+                            <Grid>
+                                <ContentPresenter />
+                                <!-- Floating Quick Reaction Bar - fades in on hover -->
+                                <Border x:Name="QuickReactionBar" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        Margin="0,-16,-12,0" Background="#FFFFFF" BorderBrush="#E3E5E8" BorderThickness="1"
+                                        CornerRadius="8" Padding="4,2" Opacity="0" Visibility="Collapsed" SnapsToDevicePixels="True">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="8" Opacity="0.12" ShadowDepth="1"/>
+                                    </Border.Effect>
+                                    <StackPanel Orientation="Horizontal">
+                                        <!-- 👍 button -->
+                                        <Button Click="ReactionButton_Click" Tag="👍" Background="Transparent" BorderThickness="0" Cursor="Hand" Width="26" Height="26" Margin="1,0">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="BtnBorder" Background="Transparent" CornerRadius="4">
+                                                        <emoji:TextBlock Text="👍" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                                                            <emoji:TextBlock.RenderTransform>
+                                                                <ScaleTransform x:Name="EmojiScale" ScaleX="1" ScaleY="1"/>
+                                                            </emoji:TextBlock.RenderTransform>
+                                                        </emoji:TextBlock>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="BtnBorder" Property="Background" Value="#F2F3F5"/>
+                                                            <Trigger.EnterActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleX" To="1.2" Duration="0:0:0.1"/>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleY" To="1.2" Duration="0:0:0.1"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </Trigger.EnterActions>
+                                                            <Trigger.ExitActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleX" To="1.0" Duration="0:0:0.1"/>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleY" To="1.0" Duration="0:0:0.1"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </Trigger.ExitActions>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+
+                                        <!-- 👎 button -->
+                                        <Button Click="ReactionButton_Click" Tag="👎" Background="Transparent" BorderThickness="0" Cursor="Hand" Width="26" Height="26" Margin="1,0">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="BtnBorder" Background="Transparent" CornerRadius="4">
+                                                        <emoji:TextBlock Text="👎" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                                                            <emoji:TextBlock.RenderTransform>
+                                                                <ScaleTransform x:Name="EmojiScale" ScaleX="1" ScaleY="1"/>
+                                                            </emoji:TextBlock.RenderTransform>
+                                                        </emoji:TextBlock>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="BtnBorder" Property="Background" Value="#F2F3F5"/>
+                                                            <Trigger.EnterActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleX" To="1.2" Duration="0:0:0.1"/>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleY" To="1.2" Duration="0:0:0.1"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </Trigger.EnterActions>
+                                                            <Trigger.ExitActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleX" To="1.0" Duration="0:0:0.1"/>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleY" To="1.0" Duration="0:0:0.1"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </Trigger.ExitActions>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+
+                                        <!-- 😂 button -->
+                                        <Button Click="ReactionButton_Click" Tag="😂" Background="Transparent" BorderThickness="0" Cursor="Hand" Width="26" Height="26" Margin="1,0">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="BtnBorder" Background="Transparent" CornerRadius="4">
+                                                        <emoji:TextBlock Text="😂" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                                                            <emoji:TextBlock.RenderTransform>
+                                                                <ScaleTransform x:Name="EmojiScale" ScaleX="1" ScaleY="1"/>
+                                                            </emoji:TextBlock.RenderTransform>
+                                                        </emoji:TextBlock>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="BtnBorder" Property="Background" Value="#F2F3F5"/>
+                                                            <Trigger.EnterActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleX" To="1.2" Duration="0:0:0.1"/>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleY" To="1.2" Duration="0:0:0.1"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </Trigger.EnterActions>
+                                                            <Trigger.ExitActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleX" To="1.0" Duration="0:0:0.1"/>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleY" To="1.0" Duration="0:0:0.1"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </Trigger.ExitActions>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+
+                                        <!-- ❤️ button (Vibrant Heart with Custom Gray -> Red Style Trigger) -->
+                                        <Button Click="ReactionButton_Click" Tag="❤️" Background="Transparent" BorderThickness="0" Cursor="Hand" Width="26" Height="26" Margin="1,0">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="BtnBorder" Background="Transparent" CornerRadius="4">
+                                                        <emoji:TextBlock x:Name="HeartText" Text="❤" FontSize="15" Foreground="#747F8D" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                                                            <emoji:TextBlock.RenderTransform>
+                                                                <ScaleTransform x:Name="EmojiScale" ScaleX="1" ScaleY="1"/>
+                                                            </emoji:TextBlock.RenderTransform>
+                                                        </emoji:TextBlock>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="BtnBorder" Property="Background" Value="#F2F3F5"/>
+                                                            <Setter TargetName="HeartText" Property="Foreground" Value="#ED4245"/>
+                                                            <Trigger.EnterActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleX" To="1.2" Duration="0:0:0.1"/>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleY" To="1.2" Duration="0:0:0.1"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </Trigger.EnterActions>
+                                                            <Trigger.ExitActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleX" To="1.0" Duration="0:0:0.1"/>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleY" To="1.0" Duration="0:0:0.1"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </Trigger.ExitActions>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+
+                                        <!-- 😮 button -->
+                                        <Button Click="ReactionButton_Click" Tag="😮" Background="Transparent" BorderThickness="0" Cursor="Hand" Width="26" Height="26" Margin="1,0">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="BtnBorder" Background="Transparent" CornerRadius="4">
+                                                        <emoji:TextBlock Text="😮" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                                                            <emoji:TextBlock.RenderTransform>
+                                                                <ScaleTransform x:Name="EmojiScale" ScaleX="1" ScaleY="1"/>
+                                                            </emoji:TextBlock.RenderTransform>
+                                                        </emoji:TextBlock>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="BtnBorder" Property="Background" Value="#F2F3F5"/>
+                                                            <Trigger.EnterActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleX" To="1.2" Duration="0:0:0.1"/>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleY" To="1.2" Duration="0:0:0.1"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </Trigger.EnterActions>
+                                                            <Trigger.ExitActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleX" To="1.0" Duration="0:0:0.1"/>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleY" To="1.0" Duration="0:0:0.1"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </Trigger.ExitActions>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+
+                                        <!-- 😢 button -->
+                                        <Button Click="ReactionButton_Click" Tag="😢" Background="Transparent" BorderThickness="0" Cursor="Hand" Width="26" Height="26" Margin="1,0">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="BtnBorder" Background="Transparent" CornerRadius="4">
+                                                        <emoji:TextBlock Text="😢" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                                                            <emoji:TextBlock.RenderTransform>
+                                                                <ScaleTransform x:Name="EmojiScale" ScaleX="1" ScaleY="1"/>
+                                                            </emoji:TextBlock.RenderTransform>
+                                                        </emoji:TextBlock>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="BtnBorder" Property="Background" Value="#F2F3F5"/>
+                                                            <Trigger.EnterActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleX" To="1.2" Duration="0:0:0.1"/>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleY" To="1.2" Duration="0:0:0.1"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </Trigger.EnterActions>
+                                                            <Trigger.ExitActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleX" To="1.0" Duration="0:0:0.1"/>
+                                                                        <DoubleAnimation Storyboard.TargetName="EmojiScale" Storyboard.TargetProperty="ScaleY" To="1.0" Duration="0:0:0.1"/>
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </Trigger.ExitActions>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <!-- Hover Effect: subtle grey background hover -->
+                            <!-- Hover Effect: subtle grey background hover + show quick reaction bar -->
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="MessageBorder" Property="Background" Value="#F8F9FA"/>
+                                <Setter TargetName="QuickReactionBar" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="QuickReactionBar" Property="Opacity" Value="1"/>
                             </Trigger>
                             <!-- Disable selection box highlight entirely -->
                             <Trigger Property="IsSelected" Value="True">
@@ -692,7 +924,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
- 
+
             <!-- Chat Header -->
             <Border Grid.Row="0" BorderBrush="#E3E5E8" BorderThickness="0,0,0,1" Padding="20,0">
                 <Grid>
@@ -776,7 +1008,21 @@
             </Border>
             
             <!-- Message List (Discord style left-aligned) -->
-            <ListBox x:Name="lstChatMessages" Grid.Row="1" Background="Transparent" BorderThickness="0" Padding="0,10,0,0" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.CanContentScroll="False" PreviewMouseWheel="SmoothScrollViewer_PreviewMouseWheel" ItemContainerStyle="{StaticResource DiscordMessageItemStyle}">
+            <ListBox x:Name="lstChatMessages" Grid.Row="1" Background="Transparent" BorderThickness="0" Padding="0,10,0,0"
+                     VerticalAlignment="Bottom"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.CanContentScroll="False"
+                     ScrollViewer.IsDeferredScrollingEnabled="False"
+                     VirtualizingStackPanel.IsVirtualizing="True"
+                     VirtualizingStackPanel.VirtualizationMode="Recycling"
+                     PreviewMouseWheel="SmoothScrollViewer_PreviewMouseWheel"
+                     ItemContainerStyle="{StaticResource DiscordMessageItemStyle}">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel/>
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <Grid x:Name="MsgGrid" Margin="0,4,0,4">
@@ -786,11 +1032,20 @@
                             </Grid.ColumnDefinitions>
                             
                             <!-- Avatar on the left -->
-                            <Ellipse x:Name="imgMsgAvatar" Grid.Column="0" Width="40" Height="40" VerticalAlignment="Top" HorizontalAlignment="Center">
-                                <Ellipse.Fill>
-                                    <ImageBrush ImageSource="{Binding AvatarBase64, Converter={StaticResource Base64Converter}}" Stretch="UniformToFill"/>
-                                </Ellipse.Fill>
-                            </Ellipse>
+                            <Grid x:Name="AvatarGrid" Grid.Column="0" Width="40" Height="40" VerticalAlignment="Top" HorizontalAlignment="Center">
+                                <Ellipse x:Name="imgMsgAvatar" Width="40" Height="40" VerticalAlignment="Top" HorizontalAlignment="Center">
+                                    <Ellipse.Fill>
+                                        <ImageBrush ImageSource="{Binding AvatarBase64, Converter={StaticResource Base64Converter}}" Stretch="UniformToFill"/>
+                                    </Ellipse.Fill>
+                                </Ellipse>
+                                <Ellipse Width="40" Height="40" VerticalAlignment="Top" HorizontalAlignment="Center"
+                                         Fill="#5865F2"
+                                         Visibility="{Binding AvatarBase64, Converter={StaticResource AvatarInitialsVisConverter}}"/>
+                                <TextBlock Text="{Binding Sender, Converter={StaticResource FirstLetterConverter}}"
+                                           FontSize="16" FontWeight="Bold" Foreground="White"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Visibility="{Binding AvatarBase64, Converter={StaticResource AvatarInitialsVisConverter}}"/>
+                            </Grid>
                             
                             <!-- Message Content Pane on the right -->
                             <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Top">
@@ -803,6 +1058,7 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" Text="📄" FontSize="26" VerticalAlignment="Center" Margin="0,0,12,0"/>
                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -818,6 +1074,21 @@
                                             <!-- Upload/Download progress -->
                                             <ProgressBar Height="4" Minimum="0" Maximum="100" Value="{Binding TransferProgress}" Margin="0,6,0,0" BorderThickness="0" x:Name="EmbedProgress" Visibility="{Binding IsTransferring, Converter={StaticResource BoolToVis}}"/>
                                         </StackPanel>
+                                        <!-- Remove button for draft files (X in top-right corner) -->
+                                        <Button x:Name="btnRemoveDraftFile" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4,-4,0,0" Width="22" Height="22" Background="#ED4245" BorderThickness="0" Cursor="Hand" Click="BtnRemovePending_Click" Tag="{Binding}" Visibility="Collapsed">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="B" Background="#ED4245" CornerRadius="11" Opacity="0.9">
+                                                        <TextBlock Text="✕" Foreground="White" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="B" Property="Opacity" Value="1.0"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
                                     </Grid>
                                 </Border>
                                 <!-- Image Attachment (Discord style inline image viewer) -->
@@ -831,9 +1102,25 @@
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
                                         <Image x:Name="imgEmbedControl" Source="{Binding LocalFilePath}" Stretch="Uniform" MaxWidth="340" MaxHeight="250"/>
-                                        
+
                                         <!-- Upload/Download progress for Image -->
                                         <ProgressBar Grid.Row="1" Height="4" Minimum="0" Maximum="100" Value="{Binding TransferProgress}" Margin="0,4,0,0" BorderThickness="0" x:Name="ImageProgress" Visibility="{Binding IsTransferring, Converter={StaticResource BoolToVis}}"/>
+
+                                        <!-- Remove button for draft images (X in top-right corner) -->
+                                        <Button x:Name="btnRemoveDraftImage" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-8,-8,0" Width="22" Height="22" Background="#ED4245" BorderThickness="0" Cursor="Hand" Click="BtnRemovePending_Click" Tag="{Binding}" Visibility="Collapsed">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="B" Background="#ED4245" CornerRadius="11" Opacity="0.9">
+                                                        <TextBlock Text="✕" Foreground="White" FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="B" Property="Opacity" Value="1.0"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
                                     </Grid>
                                 </Border>
 
@@ -852,17 +1139,36 @@
                                 </Border>
 
                                 <emoji:TextBlock x:Name="txtMsgContent" Text="{Binding DisplayText}" FontSize="15" Foreground="#2E3338" TextWrapping="Wrap"/>
+
+                                <!-- Reactions Display Panel -->
+                                <ItemsControl x:Name="ReactionsPanel" ItemsSource="{Binding Reactions}" Margin="0,4,0,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#F2F3F5" CornerRadius="10" BorderBrush="#E3E5E8" BorderThickness="1" Padding="6,2" Margin="0,0,4,0" Cursor="Hand" ToolTip="{Binding UserNames}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <emoji:TextBlock Text="{Binding Emoji}" FontSize="12" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding Count}" FontSize="11" Foreground="#4F5660" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </StackPanel>
                         </Grid>
                         <DataTemplate.Triggers>
                             <!-- System message styling -->
                             <DataTrigger Binding="{Binding Sender}" Value="System">
-                                <Setter TargetName="imgMsgAvatar" Property="Visibility" Value="Collapsed"/>
+                                <Setter TargetName="AvatarGrid" Property="Visibility" Value="Collapsed"/>
+                                <Setter TargetName="AvatarCol" Property="Width" Value="0"/>
                                 <Setter TargetName="HeaderPanel" Property="Visibility" Value="Collapsed"/>
                                 <Setter TargetName="txtMsgContent" Property="Foreground" Value="#747F8D"/>
                                 <Setter TargetName="txtMsgContent" Property="FontSize" Value="13"/>
                                 <Setter TargetName="txtMsgContent" Property="FontStyle" Value="Italic"/>
-                                <Setter TargetName="AvatarCol" Property="Width" Value="20"/>
                             </DataTrigger>
                             <!-- File styling -->
                             <DataTrigger Binding="{Binding IsFile}" Value="True">
@@ -871,6 +1177,15 @@
                             <!-- Me styling (colored name) -->
                             <DataTrigger Binding="{Binding IsMe}" Value="True">
                                 <Setter TargetName="lblSenderName" Property="Foreground" Value="#5865F2"/>
+                            </DataTrigger>
+
+                            <!-- Draft image styling (dashed purple border) -->
+                            <DataTrigger Binding="{Binding IsDraft}" Value="True">
+                                <Setter TargetName="ImageEmbedBorder" Property="BorderBrush" Value="#5865F2"/>
+                                <Setter TargetName="ImageEmbedBorder" Property="BorderThickness" Value="2"/>
+                                <Setter TargetName="ImageEmbedBorder" Property="Opacity" Value="0.85"/>
+                                <Setter TargetName="btnRemoveDraftImage" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="btnRemoveDraftFile" Property="Visibility" Value="Visible"/>
                             </DataTrigger>
                             
                             <!-- Custom styling for Image Only Channel -->
@@ -1052,6 +1367,43 @@
                             </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <!-- Draft Image Staging Panel -->
+            <ScrollViewer x:Name="DraftStagingPanel" Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="20,10,20,0" Visibility="Collapsed">
+                <ItemsControl x:Name="DraftStagingItems">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Width="112" Height="112" Margin="0,0,8,0" Tag="{Binding}">
+                            <Border CornerRadius="6" ClipToBounds="True" Background="#E3E5E8">
+                                <Image Source="{Binding LocalFilePath}" Stretch="UniformToFill"/>
+                            </Border>
+                            <Button HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-4,-4,0"
+                                    Width="18" Height="18" Background="#ED4245" BorderThickness="0" Cursor="Hand"
+                                    Click="BtnRemovePending_Click" Tag="{Binding}">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="B" Background="#ED4245" CornerRadius="9" Opacity="0.9">
+                                            <TextBlock Text="✕" Foreground="White" FontSize="9" FontWeight="Bold"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-1,0,0"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="B" Property="Opacity" Value="1"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
 
