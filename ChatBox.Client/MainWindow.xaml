@@ -61,47 +61,83 @@
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Setter Property="Padding" Value="20,6,20,6"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="ContextMenu">
-                <Setter.Value>
-                    <ContextMenu>
-                        <ContextMenu.Template>
-                            <ControlTemplate TargetType="ContextMenu">
-                                <Border Background="#FFFFFF" BorderBrush="#E3E5E8" BorderThickness="1" CornerRadius="4" Padding="4">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Button Content="👍" FontSize="18" Tag="👍" Click="ReactionButton_Click" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4" ToolTip="Like"/>
-                                        <Button Content="👎" FontSize="18" Tag="👎" Click="ReactionButton_Click" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4" ToolTip="Dislike"/>
-                                        <Button Content="😂" FontSize="18" Tag="😂" Click="ReactionButton_Click" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4" ToolTip="Laugh"/>
-                                        <Button Content="❤️" FontSize="18" Tag="❤️" Click="ReactionButton_Click" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4" ToolTip="Love">
-                                            <Button.Style>
-                                                <Style TargetType="Button">
-                                                    <Setter Property="Foreground" Value="#9FA0A4"/>
-                                                    <Style.Triggers>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter Property="Foreground" Value="#ED4245"/>
-                                                        </Trigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                        </Button>
-                                        <Button Content="😮" FontSize="18" Tag="😮" Click="ReactionButton_Click" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4" ToolTip="Wow"/>
-                                        <Button Content="😢" FontSize="18" Tag="😢" Click="ReactionButton_Click" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4" ToolTip="Sad"/>
-                                    </StackPanel>
-                                </Border>
-                            </ControlTemplate>
-                        </ContextMenu.Template>
-                    </ContextMenu>
-                </Setter.Value>
-            </Setter>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
                         <Border x:Name="MessageBorder" Background="{TemplateBinding Background}" BorderThickness="0" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter />
+                            <Grid>
+                                <ContentPresenter />
+                                <!-- Reaction popup button - hidden by default, shows on hover -->
+                                <Button x:Name="ReactionTrigger" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                        Margin="0,-8,-8,0" Width="28" Height="28" Cursor="Hand"
+                                        Background="Transparent" BorderThickness="0" Opacity="0"
+                                        Click="ReactionTrigger_Click">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="TriggerBorder" Background="#FFFFFF" BorderBrush="#E3E5E8" BorderThickness="1"
+                                                    CornerRadius="14" Width="28" Height="28">
+                                                <Border.Effect>
+                                                    <DropShadowEffect BlurRadius="4" Opacity="0.15" ShadowDepth="1"/>
+                                                </Border.Effect>
+                                                <TextBlock Text="+add reaction" FontSize="9" Foreground="#4F5660"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="TriggerBorder" Property="Background" Value="#F2F3F5"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                                <!-- Emoji picker popup - positioned near message on hover -->
+                                <Popup x:Name="ReactionPopup" Placement="Top" PlacementTarget="{Binding ElementName=ReactionTrigger}"
+                                        StaysOpen="False" AllowsTransparency="True" HorizontalOffset="-60" VerticalOffset="5">
+                                    <Border x:Name="EmojiPopupBorder" Background="#FFFFFF" BorderBrush="#E3E5E8" BorderThickness="1"
+                                            CornerRadius="8" Padding="6" Opacity="0">
+                                        <Border.Effect>
+                                            <DropShadowEffect BlurRadius="10" Opacity="0.2" ShadowDepth="2"/>
+                                        </Border.Effect>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Click="ReactionButton_Click" Tag="👍" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4">
+                                                <emoji:TextBlock Text="👍" FontSize="18"/>
+                                            </Button>
+                                            <Button Click="ReactionButton_Click" Tag="👎" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4">
+                                                <emoji:TextBlock Text="👎" FontSize="18"/>
+                                            </Button>
+                                            <Button Click="ReactionButton_Click" Tag="😂" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4">
+                                                <emoji:TextBlock Text="😂" FontSize="18"/>
+                                            </Button>
+                                            <Button Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4" Tag="❤️" Click="ReactionButton_Click">
+                                                <Button.Style>
+                                                    <Style TargetType="Button">
+                                                        <Setter Property="Foreground" Value="#9FA0A4"/>
+                                                        <Style.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Foreground" Value="#ED4245"/>
+                                                            </Trigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                                <emoji:TextBlock Text="❤️" FontSize="18"/>
+                                            </Button>
+                                            <Button Click="ReactionButton_Click" Tag="😮" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4">
+                                                <emoji:TextBlock Text="😮" FontSize="18"/>
+                                            </Button>
+                                            <Button Click="ReactionButton_Click" Tag="😢" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,4">
+                                                <emoji:TextBlock Text="😢" FontSize="18"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Border>
+                                </Popup>
+                            </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <!-- Hover Effect: subtle grey background hover -->
+                            <!-- Hover Effect: subtle grey background hover + show reaction trigger -->
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="MessageBorder" Property="Background" Value="#F8F9FA"/>
+                                <Setter TargetName="ReactionTrigger" Property="Opacity" Value="1"/>
+                                <Setter TargetName="EmojiPopupBorder" Property="Opacity" Value="0"/>
                             </Trigger>
                             <!-- Disable selection box highlight entirely -->
                             <Trigger Property="IsSelected" Value="True">
@@ -820,7 +856,7 @@
                             </Grid.ColumnDefinitions>
                             
                             <!-- Avatar on the left -->
-                            <Grid Grid.Column="0" Width="40" Height="40" VerticalAlignment="Top" HorizontalAlignment="Center">
+                            <Grid x:Name="AvatarGrid" Grid.Column="0" Width="40" Height="40" VerticalAlignment="Top" HorizontalAlignment="Center">
                                 <Ellipse x:Name="imgMsgAvatar" Width="40" Height="40" VerticalAlignment="Top" HorizontalAlignment="Center">
                                     <Ellipse.Fill>
                                         <ImageBrush ImageSource="{Binding AvatarBase64, Converter={StaticResource Base64Converter}}" Stretch="UniformToFill"/>
@@ -907,7 +943,7 @@
                                         <DataTemplate>
                                             <Border Background="#F2F3F5" CornerRadius="10" BorderBrush="#E3E5E8" BorderThickness="1" Padding="6,2" Margin="0,0,4,0" Cursor="Hand" ToolTip="{Binding UserNames}">
                                                 <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="{Binding Emoji}" FontSize="12" VerticalAlignment="Center"/>
+                                                    <emoji:TextBlock Text="{Binding Emoji}" FontSize="12" VerticalAlignment="Center"/>
                                                     <TextBlock Text="{Binding Count}" FontSize="11" Foreground="#4F5660" Margin="4,0,0,0" VerticalAlignment="Center"/>
                                                 </StackPanel>
                                             </Border>
@@ -919,12 +955,12 @@
                         <DataTemplate.Triggers>
                             <!-- System message styling -->
                             <DataTrigger Binding="{Binding Sender}" Value="System">
-                                <Setter TargetName="imgMsgAvatar" Property="Visibility" Value="Collapsed"/>
+                                <Setter TargetName="AvatarGrid" Property="Visibility" Value="Collapsed"/>
+                                <Setter TargetName="AvatarCol" Property="Width" Value="0"/>
                                 <Setter TargetName="HeaderPanel" Property="Visibility" Value="Collapsed"/>
                                 <Setter TargetName="txtMsgContent" Property="Foreground" Value="#747F8D"/>
                                 <Setter TargetName="txtMsgContent" Property="FontSize" Value="13"/>
                                 <Setter TargetName="txtMsgContent" Property="FontStyle" Value="Italic"/>
-                                <Setter TargetName="AvatarCol" Property="Width" Value="20"/>
                             </DataTrigger>
                             <!-- File styling -->
                             <DataTrigger Binding="{Binding IsFile}" Value="True">

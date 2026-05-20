@@ -300,15 +300,28 @@ namespace LocalChat.Core.Services
 
         private string SerializeReactions(IEnumerable<MessageReaction> reactions)
         {
-            return JsonSerializer.Serialize(GroupReactions(reactions));
+            var dtos = GroupReactions(reactions);
+            return JsonSerializer.Serialize(dtos);
         }
 
-        private List<object> GroupReactions(IEnumerable<MessageReaction> reactions)
+        private List<ReactionDto> GroupReactions(IEnumerable<MessageReaction> reactions)
         {
             return reactions
                 .GroupBy(r => r.Emoji)
-                .Select(g => new { emoji = g.Key, users = g.Where(r => r.User != null).Select(r => r.User!.Username).ToList() } as object)
+                .Select(g => new ReactionDto
+                {
+                    Emoji = g.Key,
+                    Count = g.Count(),
+                    UserNames = string.Join(", ", g.Where(r => r.User != null).Select(r => r.User!.Username))
+                })
                 .ToList();
+        }
+
+        private class ReactionDto
+        {
+            public string Emoji { get; set; } = "";
+            public int Count { get; set; }
+            public string UserNames { get; set; } = "";
         }
 
         private async Task BroadcastReactionUpdate(string messageId, ChatDbContext db)

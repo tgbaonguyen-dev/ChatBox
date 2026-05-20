@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -96,8 +97,11 @@ namespace ChatBox.Client
 
     public class Reaction
     {
+        [System.Text.Json.Serialization.JsonPropertyName("emoji")]
         public string Emoji { get; set; } = "";
+        [System.Text.Json.Serialization.JsonPropertyName("count")]
         public int Count { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("userNames")]
         public string UserNames { get; set; } = "";
     }
 
@@ -137,6 +141,7 @@ namespace ChatBox.Client
 
         private string GetConfigPath()
         {
+            // Use %AppData% for config so it persists across app updates
             string appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LANChatBox");
             if (!Directory.Exists(appData))
             {
@@ -390,24 +395,26 @@ namespace ChatBox.Client
 
                 string type = parts[0];
                 
-                if (type == "MSG") // MSG|Sender|Content|AvatarBase64|Timestamp
+                if (type == "MSG") // MSG|Sender|Content|AvatarBase64|Timestamp|ReactionsJson
                 {
                     string sender = parts[1];
                     string content = parts[2];
                     string avatar = parts.Length > 3 ? parts[3] : "";
                     string time = parts.Length > 4 ? FormatTimestamp(parts[4]) : FormatTimestamp(DateTime.UtcNow.ToString("O"));
+                    string reactionsJson = parts.Length > 5 ? parts[5] : "[]";
                     bool isMe = (sender == txtUsername.Text || sender == "Me");
                     var chatMsg = new ChatMessage
                     {
                         MessageId = Guid.NewGuid().ToString(),
-                        Sender = sender, 
-                        Content = content, 
-                        IsFile = false, 
-                        AvatarBase64 = avatar, 
-                        IsMe = isMe, 
+                        Sender = sender,
+                        Content = content,
+                        IsFile = false,
+                        AvatarBase64 = avatar,
+                        IsMe = isMe,
                         Timestamp = time,
                         RawDate = DateTime.TryParse(parts.Length > 4 ? parts[4] : "", out DateTime rdt) ? rdt : DateTime.UtcNow
                     };
+                    ParseReactionsToMessage(chatMsg, reactionsJson);
                     _allMessages.Add(chatMsg);
 
                     if (IsMessageInCurrentChannel(chatMsg))
@@ -416,7 +423,7 @@ namespace ChatBox.Client
                         lstChatMessages.ScrollIntoView(chatMsg);
                     }
                 }
-                else if (type == "FILE_READY") // FILE_READY|FileId|FileName|Size|Sender|AvatarBase64|Timestamp
+                else if (type == "FILE_READY") // FILE_READY|FileId|FileName|Size|Sender|AvatarBase64|Timestamp|ReactionsJson
                 {
                     if (parts.Length < 6) return;
                     string fileId = parts[1];
@@ -425,15 +432,16 @@ namespace ChatBox.Client
                     string sender = parts[4];
                     string avatar = parts[5];
                     string time = parts.Length > 6 ? FormatTimestamp(parts[6]) : FormatTimestamp(DateTime.UtcNow.ToString("O"));
+                    string reactionsJson = parts.Length > 7 ? parts[7] : "[]";
                     bool isMe = (sender == txtUsername.Text || sender == "Me");
 
                     var fileMsg = new ChatMessage
                     {
                         MessageId = Guid.NewGuid().ToString(),
-                        Sender = sender, 
-                        Content = fileName, 
-                        IsFile = true, 
-                        FileId = fileId, 
+                        Sender = sender,
+                        Content = fileName,
+                        IsFile = true,
+                        FileId = fileId,
                         FileSize = size,
                         AvatarBase64 = avatar,
                         IsMe = isMe,
@@ -441,6 +449,7 @@ namespace ChatBox.Client
                         IsInImageChannel = (_currentChannel == "images"),
                         RawDate = DateTime.TryParse(parts.Length > 6 ? parts[6] : "", out DateTime rdt2) ? rdt2 : DateTime.UtcNow
                     };
+                    ParseReactionsToMessage(fileMsg, reactionsJson);
                     _allMessages.Add(fileMsg);
 
                     if (fileMsg.IsImage)
@@ -497,6 +506,29 @@ namespace ChatBox.Client
                                 users[i] += " (You)";
                         }
                         lstOnlineUsers.ItemsSource = users;
+                    }
+                }
+                else if (type == "UPDATE_PROFILE")
+                {
+                    // UPDATE_PROFILE|UserId|Username|AvatarBase64
+                    // When another user updates their profile, update all their messages
+                    if (parts.Length >= 4)
+                    {
+                        string updatedUserId = parts[1];
+                        string newUsername = parts[2];
+                        string newAvatar = parts[3];
+
+                        // Update all messages from this user
+                        foreach (var msg in _allMessages.Where(m => m.Sender == newUsername))
+                        {
+                            msg.AvatarBase64 = newAvatar;
+                        }
+
+                        // Refresh UI if in chat channel
+                        if (_currentChannel == "chat")
+                        {
+                            RefreshMessageList();
+                        }
                     }
                 }
                 else if (type == "REACTION_UPDATE")
@@ -1442,8 +1474,8 @@ namespace ChatBox.Client
         {
             if (sender is Button btn && btn.Tag is string emoji)
             {
-                // Get the clicked message from the context menu placement
-                if (sender is FrameworkElement fe && fe.Parent is System.Windows.Controls.ContextMenu cm && cm.PlacementTarget is ListBoxItem item && item.DataContext is ChatMessage msg)
+                // Get the message from button's DataContext (bound to ChatMessage)
+                if (btn.DataContext is ChatMessage msg)
                 {
                     // Toggle reaction - add or remove
                     var existingReaction = msg.Reactions.FirstOrDefault(r => r.Emoji == emoji);
@@ -1462,6 +1494,12 @@ namespace ChatBox.Client
                     }
                     msg.RefreshReactions();
 
+                    // Close popup after click
+                    if (btn.Parent is System.Windows.Controls.Panel panel && panel.Parent is Popup popup)
+                    {
+                        popup.IsOpen = false;
+                    }
+
                     // Send REACT message to server
                     try
                     {
@@ -1470,6 +1508,44 @@ namespace ChatBox.Client
                     catch
                     {
                         // Silently fail - local state already updated
+                    }
+                }
+            }
+        }
+
+        private void ParseReactionsToMessage(ChatMessage msg, string reactionsJson)
+        {
+            try
+            {
+                var reactionsList = JsonSerializer.Deserialize<System.Collections.Generic.List<Reaction>>(reactionsJson);
+                if (reactionsList != null)
+                {
+                    msg.Reactions = reactionsList;
+                }
+            }
+            catch
+            {
+                // Invalid JSON, ignore
+            }
+        }
+
+        private void ReactionTrigger_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.DataContext is ChatMessage msg)
+            {
+                // Find the popup in the visual tree and open it
+                var parent = btn.Parent;
+                while (parent != null && !(parent is Grid))
+                {
+                    parent = VisualTreeHelper.GetParent(parent) as FrameworkElement;
+                }
+                if (parent is Grid grid)
+                {
+                    var popup = grid.FindName("ReactionPopup") as Popup;
+                    if (popup != null)
+                    {
+                        popup.DataContext = msg;
+                        popup.IsOpen = true;
                     }
                 }
             }
