@@ -1,5 +1,6 @@
 using LocalChat.Core.Services;
 using System;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -115,7 +116,7 @@ namespace ChatBox.Client
         private string _displayName = "";
         private CancellationTokenSource _cts = new CancellationTokenSource();
         private ChatMessage? _currentTransferMessage;
-        private System.Collections.Generic.List<ChatMessage> _pendingImages = new System.Collections.Generic.List<ChatMessage>();
+        private ObservableCollection<ChatMessage> _pendingImages = new ObservableCollection<ChatMessage>();
 
         private System.Collections.Generic.List<ChatMessage> _allMessages = new System.Collections.Generic.List<ChatMessage>();
         private string _currentChannel = "chat";
@@ -125,6 +126,10 @@ namespace ChatBox.Client
             InitializeComponent();
             LoadOrGenerateConfig();
             InitializeEmojis();
+
+            // Bind staging panel to pending images list
+            DraftStagingItems.ItemsSource = _pendingImages;
+            UpdateDraftPanelVisibility();
 
             _chatClient.OnMessageReceived += HandleIncomingMessage;
             _fileClient.OnUploadProgress += UpdateProgress;
@@ -395,24 +400,26 @@ namespace ChatBox.Client
 
                 string type = parts[0];
                 
-                if (type == "MSG") // MSG|Sender|Content|AvatarBase64|Timestamp|ReactionsJson
+                if (type == "MSG") // MSG|MessageId|Sender|Content|AvatarBase64|Timestamp|ReactionsJson
                 {
-                    string sender = parts[1];
-                    string content = parts[2];
-                    string avatar = parts.Length > 3 ? parts[3] : "";
-                    string time = parts.Length > 4 ? FormatTimestamp(parts[4]) : FormatTimestamp(DateTime.UtcNow.ToString("O"));
-                    string reactionsJson = parts.Length > 5 ? parts[5] : "[]";
-                    bool isMe = (sender == txtUsername.Text || sender == "Me");
+                    if (parts.Length < 5) return;
+                    string messageId = parts[1];
+                    string sender = parts[2];
+                    string content = parts[3];
+                    string avatar = parts[4];
+                    string time = parts.Length > 5 ? FormatTimestamp(parts[5]) : FormatTimestamp(DateTime.UtcNow.ToString("O"));
+                    string reactionsJson = parts.Length > 6 ? parts[6] : "[]";
+                    bool isMe = (sender == txtUsername.Text || sender == _displayName);
                     var chatMsg = new ChatMessage
                     {
-                        MessageId = Guid.NewGuid().ToString(),
+                        MessageId = messageId,
                         Sender = sender,
                         Content = content,
                         IsFile = false,
                         AvatarBase64 = avatar,
                         IsMe = isMe,
                         Timestamp = time,
-                        RawDate = DateTime.TryParse(parts.Length > 4 ? parts[4] : "", out DateTime rdt) ? rdt : DateTime.UtcNow
+                        RawDate = DateTime.TryParse(parts[5], out DateTime rdt) ? rdt : DateTime.UtcNow
                     };
                     ParseReactionsToMessage(chatMsg, reactionsJson);
                     _allMessages.Add(chatMsg);
@@ -425,7 +432,7 @@ namespace ChatBox.Client
                 }
                 else if (type == "FILE_READY") // FILE_READY|FileId|FileName|Size|Sender|AvatarBase64|Timestamp|ReactionsJson
                 {
-                    if (parts.Length < 6) return;
+                    if (parts.Length < 7) return;
                     string fileId = parts[1];
                     string fileName = parts[2];
                     long size = long.Parse(parts[3]);
@@ -433,11 +440,11 @@ namespace ChatBox.Client
                     string avatar = parts[5];
                     string time = parts.Length > 6 ? FormatTimestamp(parts[6]) : FormatTimestamp(DateTime.UtcNow.ToString("O"));
                     string reactionsJson = parts.Length > 7 ? parts[7] : "[]";
-                    bool isMe = (sender == txtUsername.Text || sender == "Me");
+                    bool isMe = (sender == txtUsername.Text || sender == _displayName);
 
                     var fileMsg = new ChatMessage
                     {
-                        MessageId = Guid.NewGuid().ToString(),
+                        MessageId = fileId,
                         Sender = sender,
                         Content = fileName,
                         IsFile = true,
@@ -447,7 +454,7 @@ namespace ChatBox.Client
                         IsMe = isMe,
                         Timestamp = time,
                         IsInImageChannel = (_currentChannel == "images"),
-                        RawDate = DateTime.TryParse(parts.Length > 6 ? parts[6] : "", out DateTime rdt2) ? rdt2 : DateTime.UtcNow
+                        RawDate = DateTime.TryParse(parts[6], out DateTime rdt2) ? rdt2 : DateTime.UtcNow
                     };
                     ParseReactionsToMessage(fileMsg, reactionsJson);
                     _allMessages.Add(fileMsg);
@@ -715,23 +722,32 @@ namespace ChatBox.Client
         private async void BtnSendChat_Click(object sender, RoutedEventArgs e)
         {
             string cleanText = (txtInput.Text ?? "").Replace("\r", "").Replace("\n", "").Trim();
-            if (string.IsNullOrWhiteSpace(cleanText)) return;
 
-            string text = cleanText;
-            txtInput.Text = "";
-
-            var newMsg = new ChatMessage { Sender = string.IsNullOrWhiteSpace(_displayName) ? "User" : _displayName, Content = text, AvatarBase64 = _avatarBase64, IsMe = true, Timestamp = FormatTimestamp(DateTime.UtcNow.ToString("O")) };
-            _allMessages.Add(newMsg);
-            RefreshMessageList();
-
-            try
+            // Send pending images first if any
+            if (_pendingImages.Count > 0)
             {
-                await _chatClient.SendMessageAsync($"MSG|{_userId}|{text}");
+                await SendPendingImagesAsync();
             }
-            catch (Exception)
+
+            // Then send text message if there's text
+            if (!string.IsNullOrWhiteSpace(cleanText))
             {
-                MessageBox.Show("Lost connection to server! Your message could not be sent.");
-                BtnDisconnect_Click(null, null);
+                string text = cleanText;
+                txtInput.Text = "";
+
+                var newMsg = new ChatMessage { MessageId = Guid.NewGuid().ToString(), Sender = string.IsNullOrWhiteSpace(_displayName) ? "User" : _displayName, Content = text, AvatarBase64 = _avatarBase64, IsMe = true, Timestamp = FormatTimestamp(DateTime.UtcNow.ToString("O")) };
+                _allMessages.Add(newMsg);
+                RefreshMessageList();
+
+                try
+                {
+                    await _chatClient.SendMessageAsync($"MSG|{_userId}|{newMsg.MessageId}|{text}");
+                }
+                catch (Exception)
+                {
+                    MessageBox.Show("Lost connection to server! Your message could not be sent.");
+                    BtnDisconnect_Click(null, null);
+                }
             }
         }
 
@@ -746,10 +762,11 @@ namespace ChatBox.Client
             {
                 var msg = new ChatMessage
                 {
-                    Sender = string.IsNullOrWhiteSpace(_displayName) ? "User" : _displayName, 
-                    Content = fileInfo.Name, 
-                    IsFile = true, 
-                    FileId = fileId.ToString(), 
+                    MessageId = fileId.ToString(), // Match server message ID
+                    Sender = string.IsNullOrWhiteSpace(_displayName) ? "User" : _displayName,
+                    Content = fileInfo.Name,
+                    IsFile = true,
+                    FileId = fileId.ToString(),
                     FileSize = fileInfo.Length,
                     AvatarBase64 = _avatarBase64,
                     IsTransferring = true,
@@ -995,6 +1012,11 @@ namespace ChatBox.Client
         private void ChanFiles_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
             SelectChannel("files");
+        }
+
+        private void UpdateDraftPanelVisibility()
+        {
+            DraftStagingPanel.Visibility = _pendingImages.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void RefreshMessageList()
@@ -1307,7 +1329,7 @@ namespace ChatBox.Client
             }
         }
 
-        private void TxtInput_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        private async void TxtInput_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
             var isControl = System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Control);
             var isAlt = System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Alt);
@@ -1340,7 +1362,7 @@ namespace ChatBox.Client
                     return;
                 }
                 e.Handled = true;
-                SendPendingImages();
+                await SendPendingImagesAsync();
                 BtnSendChat_Click(this, new RoutedEventArgs());
             }
             else if (e.Key == System.Windows.Input.Key.V && isControl)
@@ -1357,9 +1379,9 @@ namespace ChatBox.Client
         {
             try
             {
-                if (_pendingImages.Count >= 10)
+                if (_pendingImages.Count >= 5)
                 {
-                    MessageBox.Show("Maximum 10 images pending. Send or remove some first.", "Limit Reached", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("Maximum 5 images pending. Send or remove some first.", "Limit Reached", MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
 
@@ -1385,7 +1407,7 @@ namespace ChatBox.Client
 
                 var msg = new ChatMessage
                 {
-                    MessageId = Guid.NewGuid().ToString(),
+                    MessageId = fileId.ToString(), // Use same ID as FileId so server round-trip matches
                     Sender = _displayName,
                     Content = fileInfo.Name,
                     IsFile = true,
@@ -1400,10 +1422,9 @@ namespace ChatBox.Client
                     IsDraft = true
                 };
 
-                // Add directly to messages list (inline draft)
+                // Add to staging panel only (not message list yet)
                 _pendingImages.Add(msg);
-                _allMessages.Add(msg);
-                RefreshMessageList();
+                UpdateDraftPanelVisibility();
             }
             catch (Exception ex)
             {
@@ -1411,33 +1432,43 @@ namespace ChatBox.Client
             }
         }
 
-        private async void SendPendingImages()
+        private bool _isSendingPendingImages = false;
+
+        private async Task SendPendingImagesAsync()
         {
-            if (_pendingImages.Count == 0) return;
+            if (_pendingImages.Count == 0 || _isSendingPendingImages) return;
 
-            var toSend = _pendingImages.ToList();
-            _pendingImages.Clear();
-            // UpdatePendingImagesPanel no longer needed - panel removed
-
-            foreach (var msg in toSend)
+            _isSendingPendingImages = true;
+            try
             {
-                msg.IsDraft = false;
-                msg.IsTransferring = true;
+                var toSend = _pendingImages.ToList();
+                _pendingImages.Clear();
+                UpdateDraftPanelVisibility();
+
+                foreach (var msg in toSend)
+                {
+                    msg.IsDraft = false;
+                    msg.IsTransferring = true;
+                    _allMessages.Add(msg);
+
+                    try
+                    {
+                        await _fileClient.UploadFileAsync(_serverIp, msg.LocalFilePath, Guid.Parse(msg.FileId));
+                        msg.IsTransferring = false;
+                        await _chatClient.SendMessageAsync($"FILE_READY|{_userId}|{msg.FileId}|{msg.Content}|{msg.FileSize}");
+                    }
+                    catch
+                    {
+                        msg.IsTransferring = false;
+                    }
+                }
+
                 RefreshMessageList();
-
-                try
-                {
-                    await _fileClient.UploadFileAsync(_serverIp, msg.LocalFilePath, Guid.Parse(msg.FileId));
-                    msg.IsTransferring = false;
-                    await _chatClient.SendMessageAsync($"FILE_READY|{_userId}|{msg.FileId}|{msg.Content}|{msg.FileSize}");
-                }
-                catch
-                {
-                    msg.IsTransferring = false;
-                }
             }
-
-            RefreshMessageList();
+            finally
+            {
+                _isSendingPendingImages = false;
+            }
         }
 
         private void Topbar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -1556,8 +1587,7 @@ namespace ChatBox.Client
             if (sender is Button btn && btn.Tag is ChatMessage msg)
             {
                 _pendingImages.Remove(msg);
-                _allMessages.Remove(msg);
-                RefreshMessageList();
+                UpdateDraftPanelVisibility();
             }
         }
 

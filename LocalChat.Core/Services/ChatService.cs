@@ -99,7 +99,7 @@ namespace LocalChat.Core.Services
                     _clients.TryRemove(clientId, out _);
                     if (_onlineUsers.TryRemove(clientId, out string? username))
                     {
-                        await BroadcastAsync($"MSG|System|{username} has left the chat.||{DateTime.UtcNow:O}");
+                        await BroadcastAsync($"MSG|{Guid.NewGuid()}|System|{username} has left the chat.||{DateTime.UtcNow:O}");
                         await BroadcastOnlineUsersAsync();
                     }
                     OnLog?.Invoke($"Client disconnected: {clientId}");
@@ -172,31 +172,33 @@ namespace LocalChat.Core.Services
                         }
                         else
                         {
-                            await writer.WriteLineAsync($"MSG|{msg.Sender.Username}|{msg.Content}|{msg.Sender.AvatarBase64}|{msg.Timestamp:O}|{reactionsJson}");
+                            await writer.WriteLineAsync($"MSG|{msg.Id}|{msg.Sender.Username}|{msg.Content}|{msg.Sender.AvatarBase64}|{msg.Timestamp:O}|{reactionsJson}");
                         }
                     }
                 }
                 
-                await BroadcastAsync($"MSG|System|{username} has joined the chat.||{DateTime.UtcNow:O}", sourceClientId);
+                await BroadcastAsync($"MSG|{Guid.NewGuid()}|System|{username} has joined the chat.||{DateTime.UtcNow:O}", sourceClientId);
                 OnLog?.Invoke($"[JOIN] {username}");
                 
                 _onlineUsers[sourceClientId] = username;
                 await BroadcastOnlineUsersAsync();
             }
-            else if (type == "MSG") // MSG|UserId|Content
+            else if (type == "MSG") // MSG|UserId|ClientMessageId|Content
             {
+                if (parts.Length < 4) return;
                 string userId = parts[1];
-                string content = string.Join("|", parts, 2, parts.Length - 2);
+                string clientMessageId = parts[2];
+                string content = string.Join("|", parts, 3, parts.Length - 3);
 
                 var user = await db.Users.FindAsync(userId);
                 if (user != null)
                 {
-                    var msg = new ChatMessage { SenderId = userId, Content = content, IsFile = false, Timestamp = DateTime.UtcNow };
+                    var msg = new ChatMessage { Id = clientMessageId, SenderId = userId, Content = content, IsFile = false, Timestamp = DateTime.UtcNow };
                     db.ChatMessages.Add(msg);
                     await db.SaveChangesAsync();
 
                     // Thêm sourceClientId để không dội ngược tin nhắn về người gửi
-                    await BroadcastAsync($"MSG|{user.Username}|{content}|{user.AvatarBase64}|{msg.Timestamp:O}", sourceClientId);
+                    await BroadcastAsync($"MSG|{msg.Id}|{user.Username}|{content}|{user.AvatarBase64}|{msg.Timestamp:O}", sourceClientId);
                     OnLog?.Invoke($"[MSG] {user.Username}: {content}");
                 }
             }
@@ -211,12 +213,12 @@ namespace LocalChat.Core.Services
                 var user = await db.Users.FindAsync(userId);
                 if (user != null)
                 {
-                    var msg = new ChatMessage { SenderId = userId, Content = fileName, IsFile = true, FileId = fileId, FileSize = size, Timestamp = DateTime.UtcNow };
+                    var msg = new ChatMessage { Id = fileId, SenderId = userId, Content = fileName, IsFile = true, FileId = fileId, FileSize = size, Timestamp = DateTime.UtcNow };
                     db.ChatMessages.Add(msg);
                     await db.SaveChangesAsync();
 
                     // Thêm sourceClientId
-                    await BroadcastAsync($"FILE_READY|{fileId}|{fileName}|{size}|{user.Username}|{user.AvatarBase64}|{msg.Timestamp:O}", sourceClientId);
+                    await BroadcastAsync($"FILE_READY|{fileId}|{fileName}|{size}|{user.Username}|{user.AvatarBase64}|{msg.Timestamp:O}|[]", sourceClientId);
                     OnLog?.Invoke($"[FILE] {user.Username}: {fileName}");
                 }
             }
